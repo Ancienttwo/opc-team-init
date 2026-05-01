@@ -9,7 +9,7 @@ Use this reference when changing which skills belong to each OPC Agent.
 - Specialist agents only receive task-specific GBrain skills.
 - Do not vendor GStack or GBrain into this skill.
 
-## Matrix
+## Hermes Matrix
 
 | Agent | GStack skills | GBrain skills |
 |---|---|---|
@@ -20,7 +20,20 @@ Use this reference when changing which skills belong to each OPC Agent.
 | `growth-agent` | `office-hours`, `plan-ceo-review`, `plan-devex-review`, `design-consultation`, `browse`, `scrape`, `document-release`, `retro` | `query`, `idea-ingest`, `media-ingest`, `data-research`, `reports`, `enrich` |
 | `secretary` | `office-hours`, `document-release`, `make-pdf`, `learn` | `briefing`, `daily-task-prep`, `daily-task-manager`, `meeting-ingestion`, `reports`, `query`, `cron-scheduler`, `ingest` |
 
+## OpenClaw Matrix
+
+OpenClaw uses native OpenClaw skill IDs, not Hermes/GStack skill names.
+
+| Agent | GStack OpenClaw skills | GBrain OpenClaw skills |
+|---|---|---|
+| `coordinator` | `gstack-openclaw-office-hours`, `gstack-openclaw-ceo-review`, `gstack-openclaw-retro` | `query`, `maintain`, `setup` |
+| `researcher` | `gstack-openclaw-investigate` | `query`, `ingest`, `enrich` |
+| `writer` | `gstack-openclaw-office-hours` | `query`, `briefing` |
+| `builder` | `gstack-openclaw-investigate` | `query` |
+| `growth-agent` | `gstack-openclaw-office-hours`, `gstack-openclaw-ceo-review`, `gstack-openclaw-retro` | `query`, `ingest`, `enrich` |
+| `secretary` | `gstack-openclaw-office-hours` | `query`, `briefing`, `ingest` |
+
 ## Generated Outputs
 
 - Hermes target: selected skills are kept enabled by role in `skills.disabled`.
-- OpenClaw target: selected skills are written into `agent-skill-map.json` and `agents.json`.
+- OpenClaw target: selected skills are written into `agents.list[].skills`, `skills.entries`, `agent-skill-map.json`, and `agents.json`.

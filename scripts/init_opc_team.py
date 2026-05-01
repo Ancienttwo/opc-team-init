@@ -103,7 +103,8 @@ ALLOWED_SKILLS = {
     },
 }
 
-GSTACK_INSTALL_COMMAND = "git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/gstack && cd ~/gstack && ./setup --host hermes"
+GSTACK_HERMES_INSTALL_COMMAND = "git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/gstack && cd ~/gstack && ./setup --host hermes"
+GSTACK_OPENCLAW_INSTALL_COMMAND = "git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/gstack && cd ~/gstack && ./setup --host openclaw"
 GBRAIN_AGENT_INSTALL_URL = "https://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md"
 GBRAIN_STANDALONE_INSTALL_COMMAND = "git clone https://github.com/garrytan/gbrain.git ~/gbrain && cd ~/gbrain && bun install && bun link"
 
@@ -192,6 +193,32 @@ GBRAIN_SKILLS_BY_AGENT = {
         "cron-scheduler",
         "ingest",
     },
+}
+
+OPENCLAW_GSTACK_SKILLS_BY_AGENT = {
+    "coordinator": {
+        "gstack-openclaw-office-hours",
+        "gstack-openclaw-ceo-review",
+        "gstack-openclaw-retro",
+    },
+    "researcher": {"gstack-openclaw-investigate"},
+    "writer": {"gstack-openclaw-office-hours"},
+    "builder": {"gstack-openclaw-investigate"},
+    "growth-agent": {
+        "gstack-openclaw-office-hours",
+        "gstack-openclaw-ceo-review",
+        "gstack-openclaw-retro",
+    },
+    "secretary": {"gstack-openclaw-office-hours"},
+}
+
+OPENCLAW_GBRAIN_SKILLS_BY_AGENT = {
+    "coordinator": {"query", "maintain", "setup"},
+    "researcher": {"query", "ingest", "enrich"},
+    "writer": {"query", "briefing"},
+    "builder": {"query"},
+    "growth-agent": {"query", "ingest", "enrich"},
+    "secretary": {"query", "briefing", "ingest"},
 }
 
 
@@ -628,6 +655,10 @@ def gbrain_skills_dir(args: argparse.Namespace) -> Path:
     return args.gbrain_root / "skills"
 
 
+def gstack_openclaw_skills_dir(args: argparse.Namespace) -> Path:
+    return args.openclaw_home / "skills" / "gstack"
+
+
 def gstack_repo_present(root: Path) -> bool:
     return (root / "setup").exists() or (root / ".agents/skills/gstack/SKILL.md").exists()
 
@@ -636,17 +667,37 @@ def gstack_hermes_skills_present(hermes_home: Path) -> bool:
     return any((hermes_home / "skills").glob("gstack*/SKILL.md"))
 
 
+def gstack_openclaw_source_present(root: Path) -> bool:
+    return any((root / "openclaw" / "skills").glob("*/SKILL.md"))
+
+
+def gstack_openclaw_skills_present(openclaw_home: Path) -> bool:
+    return any((openclaw_home / "skills" / "gstack").rglob("SKILL.md"))
+
+
 def gbrain_skills_present(root: Path) -> bool:
     return any((root / "skills").glob("*/SKILL.md"))
+
+
+def gbrain_openclaw_plugin_present(root: Path) -> bool:
+    return (root / "openclaw.plugin.json").exists()
 
 
 def dependency_status(args: argparse.Namespace) -> dict[str, Any]:
     gstack_repo = gstack_repo_present(args.gstack_root)
     gstack_hermes = gstack_hermes_skills_present(args.hermes_home)
+    gstack_openclaw_source = gstack_openclaw_source_present(args.gstack_root)
+    gstack_openclaw = gstack_openclaw_skills_present(args.openclaw_home)
     gbrain_present = gbrain_skills_present(args.gbrain_root)
-    gstack_missing = args.gstack_root_explicit and not gstack_repo
-    if not args.gstack_root_explicit:
-        gstack_missing = not (gstack_repo or gstack_hermes)
+    gbrain_plugin = gbrain_openclaw_plugin_present(args.gbrain_root)
+    if args.target == "openclaw":
+        gstack_missing = args.gstack_root_explicit and not (gstack_repo or gstack_openclaw)
+        if not args.gstack_root_explicit:
+            gstack_missing = not (gstack_repo or gstack_openclaw)
+    else:
+        gstack_missing = args.gstack_root_explicit and not gstack_repo
+        if not args.gstack_root_explicit:
+            gstack_missing = not (gstack_repo or gstack_hermes)
     gbrain_missing = not gbrain_present
     return {
         "mode": args.dependency_mode,
@@ -655,14 +706,19 @@ def dependency_status(args: argparse.Namespace) -> dict[str, Any]:
             "root": str(args.gstack_root),
             "repo_present": gstack_repo,
             "hermes_skills_present": gstack_hermes,
+            "openclaw_source_present": gstack_openclaw_source,
+            "openclaw_skills_dir": str(gstack_openclaw_skills_dir(args)),
+            "openclaw_skills_present": gstack_openclaw,
             "missing": gstack_missing,
-            "install_command": GSTACK_INSTALL_COMMAND,
+            "hermes_install_command": GSTACK_HERMES_INSTALL_COMMAND,
+            "openclaw_install_command": GSTACK_OPENCLAW_INSTALL_COMMAND,
         },
         "gbrain": {
             "repo_url": "https://github.com/garrytan/gbrain",
             "root": str(args.gbrain_root),
             "skills_dir": str(gbrain_skills_dir(args)),
             "skills_present": gbrain_present,
+            "openclaw_plugin_present": gbrain_plugin,
             "missing": gbrain_missing,
             "agent_install_instructions": GBRAIN_AGENT_INSTALL_URL,
             "standalone_install_command": GBRAIN_STANDALONE_INSTALL_COMMAND,
@@ -675,18 +731,28 @@ def dependency_missing_messages(status: dict[str, Any], target: str) -> list[str
     if status["gstack"]["missing"]:
         messages.extend([
             "GStack dependency is missing.",
-            f"Install: {status['gstack']['install_command']}",
+            f"Install: {status['gstack'][f'{target}_install_command']}",
         ])
     elif target == "hermes" and not status["gstack"]["hermes_skills_present"]:
         messages.extend([
             "GStack repo was detected, but Hermes gstack skills were not found under ~/.hermes/skills/gstack*.",
             "Run from the GStack repo: ./setup --host hermes",
         ])
+    elif target == "openclaw" and not status["gstack"]["openclaw_skills_present"]:
+        messages.extend([
+            "GStack OpenClaw host skills were not found under ~/.openclaw/skills/gstack.",
+            "The OpenClaw config patch will use ~/gstack/openclaw/skills when present; run from the GStack repo for host install: ./setup --host openclaw",
+        ])
     if status["gbrain"]["missing"]:
         messages.extend([
             "GBrain dependency is missing.",
             f"Agent install guide: {status['gbrain']['agent_install_instructions']}",
             f"Standalone install: {status['gbrain']['standalone_install_command']}",
+        ])
+    elif target == "openclaw" and not status["gbrain"]["openclaw_plugin_present"]:
+        messages.extend([
+            "GBrain skills were detected, but openclaw.plugin.json was not found at the GBrain root.",
+            "Use the GBrain repo root with --gbrain-root so OpenClaw can load the bundle plugin.",
         ])
     return messages
 
@@ -740,6 +806,7 @@ def normalize_custom_spec(raw: dict[str, Any]) -> dict[str, Any]:
         "responsibilities": as_list(raw.get("responsibilities")),
         "boundaries": as_list(raw.get("boundaries")),
         "allowed_skills": sorted(set(as_list(raw.get("allowed_skills")) + ["llm-wiki", "subagent-driven-development"])),
+        "openclaw_skills": sorted(set(as_list(raw.get("openclaw_skills")))),
         "routing_triggers": as_list(raw.get("routing_triggers")),
         "wiki_scope": str(raw.get("wiki_scope") or "Specialized work records, decisions, handoffs, and reusable methods.").strip(),
         "discord_channel_name": str(raw.get("discord_channel_name") or f"#{name}").strip(),
@@ -838,52 +905,67 @@ def create_missing_profiles(hermes_home: Path, dry_run: bool, custom_specs: list
         run([hermes, "profile", "create", profile, "--clone"], env=env)
 
 
-def skill_distribution_for_agent(name: str) -> dict[str, list[str]]:
+def skill_distribution_for_agent(name: str, target: str = "hermes") -> dict[str, list[str]]:
+    if target == "openclaw":
+        return {
+            "gstack_skills": sorted(OPENCLAW_GSTACK_SKILLS_BY_AGENT.get(name, set())),
+            "gbrain_skills": sorted(OPENCLAW_GBRAIN_SKILLS_BY_AGENT.get(name, set())),
+        }
     return {
         "gstack_skills": sorted(GSTACK_SKILLS_BY_AGENT.get(name, set())),
         "gbrain_skills": sorted(GBRAIN_SKILLS_BY_AGENT.get(name, set())),
     }
 
 
-def allowed_skills_for_agent(name: str, spec: dict[str, Any] | None = None) -> set[str]:
+def allowed_skills_for_agent(name: str, spec: dict[str, Any] | None = None, target: str = "hermes") -> set[str]:
+    if target == "openclaw":
+        bundle = skill_distribution_for_agent(name, target)
+        base = set(bundle["gstack_skills"] + bundle["gbrain_skills"])
+        if spec is not None:
+            base.update(spec.get("openclaw_skills", []))
+        return base
     base = set(ALLOWED_SKILLS.get(name, set()))
     if spec is not None:
         base.update(spec["allowed_skills"])
         base.update({"llm-wiki", "subagent-driven-development"})
-    bundle = skill_distribution_for_agent(name)
+    bundle = skill_distribution_for_agent(name, target)
     base.update(bundle["gstack_skills"])
     base.update(bundle["gbrain_skills"])
     return base
 
 
-def agent_skill_map(custom_specs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def agent_skill_map(custom_specs: list[dict[str, Any]], target: str = "hermes") -> dict[str, dict[str, Any]]:
     records: dict[str, dict[str, Any]] = {}
     for profile in PROFILES:
-        bundle = skill_distribution_for_agent(profile)
+        bundle = skill_distribution_for_agent(profile, target)
         records[profile] = {
             **bundle,
-            "allowed_skills": sorted(allowed_skills_for_agent(profile)),
+            "allowed_skills": sorted(allowed_skills_for_agent(profile, target=target)),
         }
     for spec in custom_specs:
         name = spec["name"]
-        bundle = skill_distribution_for_agent(name)
+        bundle = skill_distribution_for_agent(name, target)
         records[name] = {
             **bundle,
-            "allowed_skills": sorted(allowed_skills_for_agent(name, spec)),
+            "allowed_skills": sorted(allowed_skills_for_agent(name, spec, target)),
         }
     return records
 
 
-def dependency_notes_for_agent(name: str, status: dict[str, Any]) -> list[str]:
+def dependency_notes_for_agent(name: str, status: dict[str, Any], target: str = "hermes") -> list[str]:
     notes: list[str] = []
-    if GSTACK_SKILLS_BY_AGENT.get(name):
-        if status["gstack"]["hermes_skills_present"]:
+    gstack_distribution = OPENCLAW_GSTACK_SKILLS_BY_AGENT if target == "openclaw" else GSTACK_SKILLS_BY_AGENT
+    gbrain_distribution = OPENCLAW_GBRAIN_SKILLS_BY_AGENT if target == "openclaw" else GBRAIN_SKILLS_BY_AGENT
+    if gstack_distribution.get(name):
+        if target == "openclaw" and status["gstack"]["openclaw_skills_present"]:
+            notes.append("GStack OpenClaw skills detected under ~/.openclaw/skills/gstack.")
+        elif target == "hermes" and status["gstack"]["hermes_skills_present"]:
             notes.append("GStack Hermes skills detected under ~/.hermes/skills/gstack*.")
         elif status["gstack"]["repo_present"]:
-            notes.append("GStack repo detected; run ./setup --host hermes before expecting Hermes skill commands.")
+            notes.append(f"GStack repo detected; run ./setup --host {target} before expecting {target} skill commands.")
         else:
-            notes.append(f"GStack missing; install with: {GSTACK_INSTALL_COMMAND}")
-    if GBRAIN_SKILLS_BY_AGENT.get(name):
+            notes.append(f"GStack missing; install with: {status['gstack'][f'{target}_install_command']}")
+    if gbrain_distribution.get(name):
         if status["gbrain"]["skills_present"]:
             notes.append(f"GBrain skills detected at {status['gbrain']['skills_dir']}.")
         else:
@@ -1191,7 +1273,7 @@ def refresh_profiles(args: argparse.Namespace, custom_specs: list[dict[str, Any]
         skills = list_skill_names(pdir, skill_dirs)
         cfg["skills"]["disabled"] = [s for s in skills if s not in allowed_skills_for_agent(profile)]
         cfg.setdefault("delegation", {})
-        cfg["delegation"].setdefault("default_toolsets", ["terminal", "file", "web"])
+        cfg["delegation"].pop("default_toolsets", None)
         cfg.setdefault("platform_toolsets", {})
         cfg["platform_toolsets"].setdefault("cli", [])
         if "delegation" not in cfg["platform_toolsets"]["cli"]:
@@ -1270,7 +1352,7 @@ def refresh_profiles(args: argparse.Namespace, custom_specs: list[dict[str, Any]
             allowed = allowed_skills_for_agent(profile, spec)
             cfg["skills"]["disabled"] = [s for s in skills if s not in allowed]
         cfg.setdefault("delegation", {})
-        cfg["delegation"].setdefault("default_toolsets", ["terminal", "file", "web"])
+        cfg["delegation"].pop("default_toolsets", None)
         cfg.setdefault("platform_toolsets", {})
         cfg["platform_toolsets"].setdefault("cli", [])
         if "delegation" not in cfg["platform_toolsets"]["cli"]:
@@ -1565,11 +1647,90 @@ def write_generated_json(path: Path, data: Any) -> None:
     write_generated(path, json.dumps(data, ensure_ascii=False, indent=2))
 
 
+def home_relative(path: Path) -> str:
+    expanded = path.expanduser()
+    home = Path.home()
+    try:
+        return "~/" + str(expanded.relative_to(home))
+    except ValueError:
+        return str(expanded)
+
+
+def openclaw_agent_title(name: str) -> str:
+    return "OPC " + " ".join(part.capitalize() for part in name.split("-"))
+
+
+def openclaw_workspace_dir(package: Path, name: str) -> Path:
+    return package / "workspaces" / name
+
+
+def openclaw_agent_dir(package: Path, name: str) -> Path:
+    return package / "agent-dirs" / name
+
+
+def openclaw_skill_extra_dirs(args: argparse.Namespace) -> list[str]:
+    dirs: list[Path] = []
+    if args.dependencies["gstack"]["openclaw_skills_present"]:
+        dirs.append(gstack_openclaw_skills_dir(args))
+    elif args.dependencies["gstack"]["openclaw_source_present"]:
+        dirs.append(args.gstack_root / "openclaw" / "skills")
+    if args.dependencies["gbrain"]["skills_present"]:
+        dirs.append(gbrain_skills_dir(args))
+    return list(dict.fromkeys(home_relative(path) for path in dirs))
+
+
+def openclaw_all_selected_skills(custom_specs: list[dict[str, Any]]) -> list[str]:
+    names: set[str] = set()
+    for profile in PROFILES:
+        names.update(allowed_skills_for_agent(profile, target="openclaw"))
+    for spec in custom_specs:
+        names.update(allowed_skills_for_agent(spec["name"], spec, target="openclaw"))
+    return sorted(names)
+
+
+def openclaw_workspace_agents_md(name: str, summary: str, allowed_skills: list[str], wiki_path: Path) -> str:
+    skills_text = markdown_list(allowed_skills) if allowed_skills else "- Use the runtime's available skills only when they match this agent's role."
+    return f"""\
+# {name} OpenClaw Workspace
+
+You are `{name}` in the OPC Agent Team.
+
+## Role
+{summary}
+
+## Shared Wiki
+Use this shared durable memory path:
+
+```text
+{wiki_path}
+```
+
+Project state, decisions, handoffs, and Subagent summaries belong in the shared Wiki, not in chat history or long-term role memory.
+
+## Skills
+{skills_text}
+
+## Subagents
+- Spawn temporary Subagents only for bounded, context-heavy, independent work.
+- A temporary Subagent reports back only to `{name}`.
+- Compress Subagent output before writing durable summaries to the Wiki.
+"""
+
+
+def openclaw_identity_md(name: str, summary: str) -> str:
+    return f"""\
+# IDENTITY.md
+
+name: {openclaw_agent_title(name)}
+theme: {summary}
+"""
+
+
 def openclaw_agent_markdown(name: str, summary: str, soul_text: str, memory_text: str, allowed_skills: list[str], wiki_path: Path) -> str:
     return f"""\
 # {name} OPC Agent Spec
 
-Target runtime: OpenClaw-compatible configuration package.
+Target runtime: OpenClaw reference package plus `openclaw.config.patch.json5`.
 
 ## Role Summary
 {summary}
@@ -1601,7 +1762,7 @@ def openclaw_custom_agent_markdown(spec: dict[str, Any], wiki_path: Path) -> str
         summary,
         custom_soul(spec),
         custom_memory(spec),
-        sorted(allowed_skills_for_agent(spec["name"], spec)),
+        sorted(allowed_skills_for_agent(spec["name"], spec, target="openclaw")),
         wiki_path,
     )
 
@@ -1609,28 +1770,30 @@ def openclaw_custom_agent_markdown(spec: dict[str, Any], wiki_path: Path) -> str
 def openclaw_agent_records(custom_specs: list[dict[str, Any]], wiki_path: Path, dependencies: dict[str, Any]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for profile in PROFILES:
-        bundle = skill_distribution_for_agent(profile)
+        bundle = skill_distribution_for_agent(profile, target="openclaw")
         records.append({
             "name": profile,
             "kind": "core-agent",
             "role_summary": CORE_PROFILE_SUMMARY[profile],
             "prompt_file": f"agents/{profile}.md",
-            "allowed_skills": sorted(allowed_skills_for_agent(profile)),
+            "workspace_dir": f"workspaces/{profile}",
+            "allowed_skills": sorted(allowed_skills_for_agent(profile, target="openclaw")),
             **bundle,
-            "dependency_notes": dependency_notes_for_agent(profile, dependencies),
+            "dependency_notes": dependency_notes_for_agent(profile, dependencies, target="openclaw"),
             "wiki_path": str(wiki_path),
             "subagent_report_target": profile,
         })
     for spec in custom_specs:
-        bundle = skill_distribution_for_agent(spec["name"])
+        bundle = skill_distribution_for_agent(spec["name"], target="openclaw")
         records.append({
             "name": spec["name"],
             "kind": "custom-peer-agent",
             "mission": spec["mission"],
             "prompt_file": f"agents/{spec['name']}.md",
-            "allowed_skills": sorted(allowed_skills_for_agent(spec["name"], spec)),
+            "workspace_dir": f"workspaces/{spec['name']}",
+            "allowed_skills": sorted(allowed_skills_for_agent(spec["name"], spec, target="openclaw")),
             **bundle,
-            "dependency_notes": dependency_notes_for_agent(spec["name"], dependencies),
+            "dependency_notes": dependency_notes_for_agent(spec["name"], dependencies, target="openclaw"),
             "routing_triggers": spec["routing_triggers"],
             "wiki_scope": spec["wiki_scope"],
             "discord_channel_name": spec["discord_channel_name"],
@@ -1664,18 +1827,157 @@ def openclaw_channel_routes(args: argparse.Namespace, custom_specs: list[dict[st
     }
 
 
+def openclaw_route_bindings(custom_specs: list[dict[str, Any]], args: argparse.Namespace) -> list[dict[str, Any]]:
+    bindings: list[dict[str, Any]] = []
+    if args.discord_channel_id:
+        bindings.append({
+            "type": "route",
+            "agentId": "coordinator",
+            "comment": "OPC proposal intake channel.",
+            "match": {
+                "channel": "discord",
+                "peer": {"kind": "channel", "id": args.discord_channel_id},
+            },
+        })
+    for spec in custom_specs:
+        channel_id = spec.get("discord_channel_id") or ""
+        if not channel_id:
+            continue
+        bindings.append({
+            "type": "route",
+            "agentId": spec["name"],
+            "comment": f"OPC custom peer Agent channel for {spec['name']}.",
+            "match": {
+                "channel": "discord",
+                "peer": {"kind": "channel", "id": channel_id},
+            },
+        })
+    return bindings
+
+
+def openclaw_discord_channel_config(prompt: str, skills: list[str], args: argparse.Namespace) -> dict[str, Any]:
+    config: dict[str, Any] = {
+        "requireMention": False,
+        "systemPrompt": prompt,
+        "skills": skills,
+    }
+    if args.discord_user_id:
+        config["users"] = [args.discord_user_id]
+    return config
+
+
+def openclaw_discord_config(custom_specs: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Any] | None:
+    channel_ids = [args.discord_channel_id] if args.discord_channel_id else []
+    channel_ids.extend(spec.get("discord_channel_id") or "" for spec in custom_specs)
+    channel_ids = [channel_id for channel_id in channel_ids if channel_id]
+    if not channel_ids:
+        return None
+    config: dict[str, Any] = {
+        "enabled": True,
+        "token": {"source": "env", "provider": "default", "id": "DISCORD_BOT_TOKEN"},
+        "groupPolicy": "allowlist",
+    }
+    if args.discord_user_id:
+        config["allowFrom"] = [args.discord_user_id]
+    if args.discord_guild_id:
+        channels: dict[str, Any] = {}
+        if args.discord_channel_id:
+            channels[args.discord_channel_id] = openclaw_discord_channel_config(
+                textwrap.dedent(DISCORD_PROMPT).strip(),
+                sorted(allowed_skills_for_agent("coordinator", target="openclaw")),
+                args,
+            )
+        for spec in custom_specs:
+            channel_id = spec.get("discord_channel_id") or ""
+            if not channel_id:
+                continue
+            channels[channel_id] = openclaw_discord_channel_config(
+                textwrap.dedent(custom_channel_prompt(spec)).strip(),
+                sorted(allowed_skills_for_agent(spec["name"], spec, target="openclaw")),
+                args,
+            )
+        config["guilds"] = {args.discord_guild_id: {"channels": channels}}
+    return config
+
+
+def openclaw_config_patch(package: Path, custom_specs: list[dict[str, Any]], args: argparse.Namespace) -> dict[str, Any]:
+    agents: list[dict[str, Any]] = []
+    for profile in PROFILES:
+        skills = sorted(allowed_skills_for_agent(profile, target="openclaw"))
+        entry: dict[str, Any] = {
+            "id": profile,
+            "name": openclaw_agent_title(profile),
+            "workspace": home_relative(openclaw_workspace_dir(package, profile)),
+            "agentDir": home_relative(openclaw_agent_dir(package, profile)),
+            "identity": {
+                "name": openclaw_agent_title(profile),
+                "theme": CORE_PROFILE_SUMMARY[profile],
+            },
+            "subagents": {"allowAgents": [profile]},
+        }
+        if profile == "coordinator":
+            entry["default"] = True
+        if skills:
+            entry["skills"] = skills
+        agents.append(entry)
+    for spec in custom_specs:
+        skills = sorted(allowed_skills_for_agent(spec["name"], spec, target="openclaw"))
+        entry = {
+            "id": spec["name"],
+            "name": openclaw_agent_title(spec["name"]),
+            "workspace": home_relative(openclaw_workspace_dir(package, spec["name"])),
+            "agentDir": home_relative(openclaw_agent_dir(package, spec["name"])),
+            "identity": {
+                "name": openclaw_agent_title(spec["name"]),
+                "theme": spec["mission"],
+            },
+            "subagents": {"allowAgents": [spec["name"]]},
+        }
+        if skills:
+            entry["skills"] = skills
+        agents.append(entry)
+
+    patch: dict[str, Any] = {
+        "agents": {"list": agents},
+        "skills": {
+            "load": {"extraDirs": openclaw_skill_extra_dirs(args)},
+            "entries": {name: {"enabled": True} for name in openclaw_all_selected_skills(custom_specs)},
+        },
+    }
+    if args.dependencies["gbrain"]["openclaw_plugin_present"]:
+        patch["plugins"] = {"load": {"paths": [home_relative(args.gbrain_root)]}}
+    bindings = openclaw_route_bindings(custom_specs, args)
+    if bindings:
+        patch["bindings"] = bindings
+    discord = openclaw_discord_config(custom_specs, args)
+    if discord:
+        patch["secrets"] = {
+            "providers": {
+                "default": {
+                    "source": "env",
+                    "allowlist": ["DISCORD_BOT_TOKEN"],
+                },
+            },
+        }
+        patch["channels"] = {"discord": discord}
+    return patch
+
+
 def openclaw_import_doc(package: Path, wiki_path: Path) -> str:
     return f"""\
 # OPC Team OpenClaw Package
 
-This directory is a non-invasive OpenClaw-compatible configuration package. It does not edit `.openclaw/openclaw.json` because this local machine exposes Hermes OpenClaw migration helpers but no stable OpenClaw profile CLI.
+This directory is a non-invasive OpenClaw package. It does not edit `.openclaw/openclaw.json`.
 
 ## Files
 - `manifest.json`: package metadata.
 - `dependencies.json`: detected GStack/GBrain dependency state and install hints.
-- `agent-skill-map.json`: role-based GStack/GBrain distribution matrix.
+- `agent-skill-map.json`: role-based OpenClaw skill distribution matrix.
 - `agents.json`: structured agent registry.
 - `agents/*.md`: prompt and role-memory seeds for each core or custom Agent.
+- `agent-dirs/*/`: real OpenClaw per-agent `agentDir` folders.
+- `workspaces/*/`: real OpenClaw per-agent workspace bootstrap files.
+- `openclaw.config.patch.json5`: OpenClaw `openclaw.json`-compatible config patch.
 - `routing-table.md`: coordinator routing table.
 - `discord-channel-routing.json`: one-token, multi-channel routing policy.
 - `subagent-reporting.md`: temporary Subagent report contract.
@@ -1683,7 +1985,7 @@ This directory is a non-invasive OpenClaw-compatible configuration package. It d
 
 ## Integration Pattern
 1. Keep the shared Wiki at `{wiki_path}`.
-2. Use `agents/*.md` as the source prompt/spec for OpenClaw agent definitions.
+2. Review and merge `openclaw.config.patch.json5` into `~/.openclaw/openclaw.json`.
 3. Keep Discord token ownership centralized in the coordinator process.
 4. Map channels from `discord-channel-routing.json`; custom Agents get their own channels but not their own bot token by default.
 5. Temporary Subagents report only to the owning Agent named in `agents.json`.
@@ -1706,6 +2008,8 @@ def init_openclaw_package(args: argparse.Namespace, custom_specs: list[dict[str,
     today = _dt.date.today().isoformat()
     generated_at = _dt.datetime.now().isoformat(timespec="seconds")
     (package / "agents").mkdir(parents=True, exist_ok=True)
+    (package / "agent-dirs").mkdir(parents=True, exist_ok=True)
+    (package / "workspaces").mkdir(parents=True, exist_ok=True)
     (package / "wiki-template").mkdir(parents=True, exist_ok=True)
 
     records = openclaw_agent_records(custom_specs, args.wiki_path, args.dependencies)
@@ -1721,8 +2025,9 @@ def init_openclaw_package(args: argparse.Namespace, custom_specs: list[dict[str,
     }
     write_generated_json(package / "manifest.json", manifest)
     write_generated_json(package / "dependencies.json", args.dependencies)
-    write_generated_json(package / "agent-skill-map.json", agent_skill_map(custom_specs))
+    write_generated_json(package / "agent-skill-map.json", agent_skill_map(custom_specs, target="openclaw"))
     write_generated_json(package / "agents.json", records)
+    write_generated_json(package / "openclaw.config.patch.json5", openclaw_config_patch(package, custom_specs, args))
     write_generated_json(package / "discord-channel-routing.json", openclaw_channel_routes(args, custom_specs))
     write_generated(package / "routing-table.md", routing_table(custom_specs))
     write_generated(package / "subagent-reporting.md", SUBAGENT_PAGE.format(date=today))
@@ -1744,12 +2049,29 @@ DISCORD_HOME_CHANNEL_NAME=#agent-proposals
                 CORE_PROFILE_SUMMARY[profile],
                 SOUL[profile],
                 MEMORY[profile],
-                sorted(allowed_skills_for_agent(profile)),
+                sorted(allowed_skills_for_agent(profile, target="openclaw")),
                 args.wiki_path,
             ),
         )
+        allowed = sorted(allowed_skills_for_agent(profile, target="openclaw"))
+        workspace = openclaw_workspace_dir(package, profile)
+        agent_dir = openclaw_agent_dir(package, profile)
+        write_generated(workspace / "AGENTS.md", openclaw_workspace_agents_md(profile, CORE_PROFILE_SUMMARY[profile], allowed, args.wiki_path))
+        write_generated(agent_dir / "AGENTS.md", openclaw_workspace_agents_md(profile, CORE_PROFILE_SUMMARY[profile], allowed, args.wiki_path))
+        write_generated(agent_dir / "SOUL.md", SOUL[profile])
+        write_generated(agent_dir / "MEMORY.md", MEMORY[profile])
+        write_generated(agent_dir / "IDENTITY.md", openclaw_identity_md(profile, CORE_PROFILE_SUMMARY[profile]))
     for spec in custom_specs:
         write_generated(package / "agents" / f"{spec['name']}.md", openclaw_custom_agent_markdown(spec, args.wiki_path))
+        allowed = sorted(allowed_skills_for_agent(spec["name"], spec, target="openclaw"))
+        summary = f"用户自定义 peer Agent，mission: {spec['mission']}"
+        workspace = openclaw_workspace_dir(package, spec["name"])
+        agent_dir = openclaw_agent_dir(package, spec["name"])
+        write_generated(workspace / "AGENTS.md", openclaw_workspace_agents_md(spec["name"], summary, allowed, args.wiki_path))
+        write_generated(agent_dir / "AGENTS.md", openclaw_workspace_agents_md(spec["name"], summary, allowed, args.wiki_path))
+        write_generated(agent_dir / "SOUL.md", custom_soul(spec))
+        write_generated(agent_dir / "MEMORY.md", custom_memory(spec))
+        write_generated(agent_dir / "IDENTITY.md", openclaw_identity_md(spec["name"], spec["mission"]))
 
     write_generated(package / "wiki-template" / "SCHEMA.md", f"""\
 # Wiki Schema
@@ -1821,6 +2143,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wiki-folder-name", default=DEFAULT_WIKI_FOLDER_NAME, help="relative folder inside the selected vault; default '.' means the vault root")
     parser.add_argument("--select-vault", action="store_true", help="interactively choose the shared vault before initializing")
     parser.add_argument("--discord-channel-id")
+    parser.add_argument("--discord-guild-id", help="Discord guild/server ID used by the OpenClaw config patch")
     parser.add_argument("--discord-user-id")
     parser.add_argument("--discord-bot-token")
     parser.add_argument("--custom-profile-spec", action="append", help="JSON file containing one custom agent spec or a list of specs")

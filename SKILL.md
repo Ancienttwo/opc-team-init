@@ -3,7 +3,7 @@ name: opc-team-init
 description: Initialize or refresh an OPC agent team for Hermes or OpenClaw. Use when the user wants coordinator/researcher/writer/builder long-running agents, user-defined peer agents such as growth-agent or secretary, shared Wiki memory, Discord channel-based proposal intake, and Subagent delegation/reporting rules that conserve main-agent context.
 license: MIT
 metadata:
-  version: 0.2.0
+  version: 0.2.1
 ---
 
 # OPC Team Init
@@ -52,6 +52,16 @@ For OpenClaw, generate a non-invasive package under `~/.openclaw/opc-team`:
 OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
 python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --target openclaw
+```
+
+With OpenClaw Discord channel routing, include the guild/server ID so the generated config patch can populate `channels.discord.guilds`:
+
+```bash
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
+  --target openclaw \
+  --discord-guild-id 345678901234567890 \
+  --discord-channel-id 123456789012345678
 ```
 
 Dependency checks default to prompt-only. The initializer never installs GStack or GBrain automatically:
@@ -109,7 +119,7 @@ hermes profile list
 coordinator gateway status
 ```
 
-Use `--run-chat-checks` only when the user wants a live Hermes model check; it spends model calls. Verify OpenClaw by inspecting `~/.openclaw/opc-team/manifest.json`, `agents.json`, and `OPENCLAW_IMPORT.md`.
+Use `--run-chat-checks` only when the user wants a live Hermes model check; it spends model calls. Verify OpenClaw by inspecting `~/.openclaw/opc-team/manifest.json`, `agents.json`, `openclaw.config.patch.json5`, and `OPENCLAW_IMPORT.md`.
 
 ## Custom Profile Model
 
@@ -126,10 +136,11 @@ Read `references/custom-profiles.md` before creating or changing custom agent sp
 
 GStack and GBrain are external MIT dependencies. Do not vendor or copy either project into this skill. The initializer detects them and distributes their skills by role.
 
-- GStack missing: print `git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/gstack && cd ~/gstack && ./setup --host hermes`.
+- GStack missing: print the target-specific setup command, `./setup --host hermes` for Hermes and `./setup --host openclaw` for OpenClaw.
 - GBrain missing: print the agent install guide at `https://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md`.
 - Hermes: GStack skills are expected under `~/.hermes/skills/gstack*`; GBrain skills are added through `skills.external_dirs`.
-- OpenClaw: dependency state and role skill maps are written into the generated package.
+- OpenClaw: GStack skills are expected under `~/.openclaw/skills/gstack` or `~/gstack/openclaw/skills`; GBrain can be loaded from `~/gbrain/openclaw.plugin.json` plus `~/gbrain/skills`.
+- OpenClaw: dependency state, real OpenClaw skill IDs, per-agent directories, workspaces, `bindings`, `skills.load.extraDirs`, and `channels.discord` are written into the generated package and config patch.
 
 Read `references/dependencies.md` and `references/skill-distribution.md` before changing this behavior.
 

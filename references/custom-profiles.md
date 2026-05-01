@@ -82,6 +82,6 @@ Coordinator must route directly to custom agents when the user's request matches
 
 Default policy is one Discord bot token, owned by coordinator. Custom agents are associated with distinct Discord channels by coordinator channel prompts or OpenClaw package channel routing.
 
-If a custom agent has `discord_channel_id`, the Hermes target adds that channel to coordinator's free-response channels and writes a channel prompt that routes messages to the custom Profile. The OpenClaw target writes the same mapping to `discord-channel-routing.json`.
+If a custom agent has `discord_channel_id`, the Hermes target adds that channel to coordinator's free-response channels and writes a channel prompt that routes messages to the custom Profile. The OpenClaw target writes the same mapping to `discord-channel-routing.json`, `bindings`, and, when `--discord-guild-id` is supplied, `channels.discord.guilds`.
 
 Do not put the Discord bot token in custom agent `.env` files or generated specs.

@@ -35,6 +35,12 @@ GStack for Hermes:
 git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/gstack && cd ~/gstack && ./setup --host hermes
 ```
 
+GStack for OpenClaw:
+
+```bash
+git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/gstack && cd ~/gstack && ./setup --host openclaw
+```
+
 GBrain for agents:
 
 ```text
@@ -52,11 +58,23 @@ git clone https://github.com/garrytan/gbrain.git ~/gbrain && cd ~/gbrain && bun 
 - GStack skills are expected under `~/.hermes/skills/gstack*` after GStack setup.
 - GBrain skills are loaded via `skills.external_dirs` pointing at `~/gbrain/skills` when detected.
 - `skills.disabled` is computed from profile skills, global Hermes skills, and configured external dirs.
+- Hermes config must keep `platform_toolsets.cli += delegation`, but must not write deprecated `delegation.default_toolsets`.
 
 ## OpenClaw Behavior
+
+OpenClaw dependency detection checks:
+
+- GStack installed skills under `~/.openclaw/skills/gstack`.
+- GStack source skills under `~/gstack/openclaw/skills`.
+- GBrain skill folders under `~/gbrain/skills`.
+- GBrain OpenClaw plugin metadata at `~/gbrain/openclaw.plugin.json`.
 
 OpenClaw package generation writes:
 
 - `dependencies.json`
 - `agent-skill-map.json`
 - per-agent `gstack_skills`, `gbrain_skills`, and `dependency_notes` in `agents.json`
+- `openclaw.config.patch.json5` with `skills.load.extraDirs` for detected external skill dirs
+- optional `plugins.load.paths` for a detected GBrain OpenClaw plugin
+
+If the GStack repo exists but the OpenClaw host install does not, prefer `~/gstack/openclaw/skills` in the generated `skills.load.extraDirs` and still print `./setup --host openclaw` as the host-install next step.

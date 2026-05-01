@@ -4,7 +4,7 @@ Use this reference when the user asks for OpenClaw support.
 
 ## Policy
 
-This skill treats OpenClaw as a configuration-package target, not as a live profile runtime. The local Hermes install exposes `hermes claw migrate` and OpenClaw migration helpers, but no stable OpenClaw profile creation CLI was found. Therefore the initializer must not mutate `.openclaw/openclaw.json`.
+This skill treats OpenClaw as a configuration-package target, not as an in-place config editor. The initializer must not mutate `.openclaw/openclaw.json`; it generates package files plus an `openclaw.config.patch.json5` fragment that the user can review and merge.
 
 ## Command
 
@@ -36,9 +36,12 @@ Expected files:
 
 - `manifest.json`: package metadata and compatibility mode.
 - `dependencies.json`: detected GStack/GBrain dependency state and install hints.
-- `agent-skill-map.json`: role-based GStack/GBrain distribution matrix.
+- `agent-skill-map.json`: role-based OpenClaw skill distribution matrix.
 - `agents.json`: structured registry for core and custom peer agents.
 - `agents/*.md`: prompt and role-memory seeds.
+- `agent-dirs/*/`: real per-agent `agentDir` folders referenced by the config patch.
+- `workspaces/*/`: real per-agent `workspace` folders referenced by the config patch.
+- `openclaw.config.patch.json5`: mergeable config fragment with `agents.list`, `skills.load.extraDirs`, `skills.entries`, optional `plugins.load.paths`, optional `bindings`, and optional `channels.discord`.
 - `custom-profiles.json`: custom peer agent registry.
 - `routing-table.md`: coordinator routing rules.
 - `discord-channel-routing.json`: single-token, multi-channel routing policy.
@@ -50,6 +53,28 @@ Expected files:
 ## Discord
 
 Default to one coordinator-owned Discord token. Custom agents may have distinct channels, but the generated specs must not contain real tokens.
+
+When channel IDs are supplied, the package writes route bindings:
+
+- `bindings[].agentId`
+- `bindings[].match.channel: "discord"`
+- `bindings[].match.peer.kind: "channel"`
+- `bindings[].match.peer.id`
+
+When `--discord-guild-id` is also supplied, the config patch adds `channels.discord.guilds.<guildId>.channels.<channelId>` entries with channel-specific `systemPrompt` and role-appropriate `skills`.
+
+## Skills
+
+Do not reuse Hermes skill IDs for OpenClaw. Use the OpenClaw-native GStack IDs:
+
+- `gstack-openclaw-office-hours`
+- `gstack-openclaw-ceo-review`
+- `gstack-openclaw-investigate`
+- `gstack-openclaw-retro`
+
+Use only the GBrain OpenClaw plugin skill IDs that the plugin declares: `ingest`, `query`, `maintain`, `enrich`, `briefing`, `migrate`, and `setup`.
+
+The OpenClaw target writes these into `agents.list[].skills`, `skills.entries`, `agent-skill-map.json`, and `agents.json`.
 
 ## Subagents
 
