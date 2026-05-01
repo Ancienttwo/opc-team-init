@@ -1,0 +1,52 @@
+# OpenClaw Target
+
+Use this reference when the user asks for OpenClaw support.
+
+## Policy
+
+This skill treats OpenClaw as a configuration-package target, not as a live profile runtime. The local Hermes install exposes `hermes claw migrate` and OpenClaw migration helpers, but no stable OpenClaw profile creation CLI was found. Therefore the initializer must not mutate `.openclaw/openclaw.json`.
+
+## Command
+
+```bash
+python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+  --target openclaw
+```
+
+With custom agents:
+
+```bash
+python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+  --target openclaw \
+  --custom-profile-preset growth-agent \
+  --custom-profile-preset secretary
+```
+
+## Output
+
+The OpenClaw target writes a non-secret package under:
+
+```text
+~/.openclaw/opc-team
+```
+
+Expected files:
+
+- `manifest.json`: package metadata and compatibility mode.
+- `agents.json`: structured registry for core and custom peer agents.
+- `agents/*.md`: prompt and role-memory seeds.
+- `custom-profiles.json`: custom peer agent registry.
+- `routing-table.md`: coordinator routing rules.
+- `discord-channel-routing.json`: single-token, multi-channel routing policy.
+- `subagent-reporting.md`: temporary Subagent report contract.
+- `.env.example`: placeholders only, no secrets.
+- `OPENCLAW_IMPORT.md`: manual integration notes.
+- `wiki-template/`: minimal shared Wiki seed pages.
+
+## Discord
+
+Default to one coordinator-owned Discord token. Custom agents may have distinct channels, but the generated specs must not contain real tokens.
+
+## Subagents
+
+OpenClaw support uses the same Subagent model as Hermes at the prompt/protocol level: spawned temporary agents report only to their owning core or custom agent. The package records this in `agents.json` as `subagent_report_target`.
