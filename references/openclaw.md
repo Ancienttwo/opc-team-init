@@ -35,6 +35,8 @@ The OpenClaw target writes a non-secret package under:
 Expected files:
 
 - `manifest.json`: package metadata and compatibility mode.
+- `dependencies.json`: detected GStack/GBrain dependency state and install hints.
+- `agent-skill-map.json`: role-based GStack/GBrain distribution matrix.
 - `agents.json`: structured registry for core and custom peer agents.
 - `agents/*.md`: prompt and role-memory seeds.
 - `custom-profiles.json`: custom peer agent registry.

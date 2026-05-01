@@ -103,6 +103,97 @@ ALLOWED_SKILLS = {
     },
 }
 
+GSTACK_INSTALL_COMMAND = "git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/gstack && cd ~/gstack && ./setup --host hermes"
+GBRAIN_AGENT_INSTALL_URL = "https://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md"
+GBRAIN_STANDALONE_INSTALL_COMMAND = "git clone https://github.com/garrytan/gbrain.git ~/gbrain && cd ~/gbrain && bun install && bun link"
+
+GSTACK_SKILLS_BY_AGENT = {
+    "coordinator": {
+        "office-hours",
+        "autoplan",
+        "plan-ceo-review",
+        "plan-eng-review",
+        "plan-design-review",
+        "plan-devex-review",
+        "retro",
+        "checkpoint",
+        "context-save",
+        "context-restore",
+        "learn",
+        "setup-gbrain",
+    },
+    "researcher": {"investigate", "browse", "scrape", "benchmark-models"},
+    "writer": {"office-hours", "design-consultation", "document-release", "make-pdf"},
+    "builder": {
+        "investigate",
+        "review",
+        "qa",
+        "qa-only",
+        "cso",
+        "health",
+        "ship",
+        "land-and-deploy",
+        "setup-deploy",
+        "benchmark",
+        "canary",
+        "careful",
+        "guard",
+        "freeze",
+        "unfreeze",
+        "devex-review",
+        "design-review",
+        "browse",
+    },
+    "growth-agent": {
+        "office-hours",
+        "plan-ceo-review",
+        "plan-devex-review",
+        "design-consultation",
+        "browse",
+        "scrape",
+        "document-release",
+        "retro",
+    },
+    "secretary": {"office-hours", "document-release", "make-pdf", "learn"},
+}
+
+GBRAIN_SKILLS_BY_AGENT = {
+    "coordinator": {
+        "brain-ops",
+        "signal-detector",
+        "query",
+        "reports",
+        "daily-task-manager",
+        "cron-scheduler",
+        "minion-orchestrator",
+        "maintain",
+        "skillpack-check",
+    },
+    "researcher": {
+        "query",
+        "data-research",
+        "ingest",
+        "idea-ingest",
+        "media-ingest",
+        "meeting-ingestion",
+        "enrich",
+        "citation-fixer",
+    },
+    "writer": {"query", "reports", "publish", "briefing"},
+    "builder": {"query", "testing", "cross-modal-review"},
+    "growth-agent": {"query", "idea-ingest", "media-ingest", "data-research", "reports", "enrich"},
+    "secretary": {
+        "briefing",
+        "daily-task-prep",
+        "daily-task-manager",
+        "meeting-ingestion",
+        "reports",
+        "query",
+        "cron-scheduler",
+        "ingest",
+    },
+}
+
 
 PRESET_CUSTOM_PROFILES: dict[str, dict[str, Any]] = {
     "growth-agent": {
@@ -177,6 +268,7 @@ SOUL = {
 - 路由任务：选择唯一主责角色，必要时说明协作角色。
 - 汇总结果：把不同角色和 Subagent 的报告合并成一个连贯交付。
 - 维护共享 Wiki：项目状态、决策记录、交接单、复盘都写入 `WIKI_PATH` 指向的共享 Wiki。
+- 统一 Brain-first：GBrain 的 always-on、signal 和 brain-first lookup 由你统一调度，避免多个 Profile 重复写入。
 
 ## Subagent 规则
 - 当任务独立、上下文重、适合并行时，可以 spawn temporary Subagent。
@@ -300,6 +392,8 @@ Profile 是长期角色，Subagent 是临时外包；不要让临时任务污染
 Subagent 必须返回紧凑报告给唯一主责 Profile；主 Profile 负责压缩、审查和归档。
 §
 Discord #agent-proposals 是提案入口；该频道消息默认先整理成提案卡，不直接执行。
+§
+GBrain always-on / brain-first 由 coordinator 统一拥有；其他 Profile 只在任务需要时使用分配给自己的 GBrain skills。
 """,
     "researcher": """\
 Researcher 的长期经验：
@@ -530,6 +624,88 @@ def openclaw_registry_path(openclaw_home: Path) -> Path:
     return openclaw_package_dir(openclaw_home) / "custom-profiles.json"
 
 
+def gbrain_skills_dir(args: argparse.Namespace) -> Path:
+    return args.gbrain_root / "skills"
+
+
+def gstack_repo_present(root: Path) -> bool:
+    return (root / "setup").exists() or (root / ".agents/skills/gstack/SKILL.md").exists()
+
+
+def gstack_hermes_skills_present(hermes_home: Path) -> bool:
+    return any((hermes_home / "skills").glob("gstack*/SKILL.md"))
+
+
+def gbrain_skills_present(root: Path) -> bool:
+    return any((root / "skills").glob("*/SKILL.md"))
+
+
+def dependency_status(args: argparse.Namespace) -> dict[str, Any]:
+    gstack_repo = gstack_repo_present(args.gstack_root)
+    gstack_hermes = gstack_hermes_skills_present(args.hermes_home)
+    gbrain_present = gbrain_skills_present(args.gbrain_root)
+    gstack_missing = args.gstack_root_explicit and not gstack_repo
+    if not args.gstack_root_explicit:
+        gstack_missing = not (gstack_repo or gstack_hermes)
+    gbrain_missing = not gbrain_present
+    return {
+        "mode": args.dependency_mode,
+        "gstack": {
+            "repo_url": "https://github.com/garrytan/gstack",
+            "root": str(args.gstack_root),
+            "repo_present": gstack_repo,
+            "hermes_skills_present": gstack_hermes,
+            "missing": gstack_missing,
+            "install_command": GSTACK_INSTALL_COMMAND,
+        },
+        "gbrain": {
+            "repo_url": "https://github.com/garrytan/gbrain",
+            "root": str(args.gbrain_root),
+            "skills_dir": str(gbrain_skills_dir(args)),
+            "skills_present": gbrain_present,
+            "missing": gbrain_missing,
+            "agent_install_instructions": GBRAIN_AGENT_INSTALL_URL,
+            "standalone_install_command": GBRAIN_STANDALONE_INSTALL_COMMAND,
+        },
+    }
+
+
+def dependency_missing_messages(status: dict[str, Any], target: str) -> list[str]:
+    messages: list[str] = []
+    if status["gstack"]["missing"]:
+        messages.extend([
+            "GStack dependency is missing.",
+            f"Install: {status['gstack']['install_command']}",
+        ])
+    elif target == "hermes" and not status["gstack"]["hermes_skills_present"]:
+        messages.extend([
+            "GStack repo was detected, but Hermes gstack skills were not found under ~/.hermes/skills/gstack*.",
+            "Run from the GStack repo: ./setup --host hermes",
+        ])
+    if status["gbrain"]["missing"]:
+        messages.extend([
+            "GBrain dependency is missing.",
+            f"Agent install guide: {status['gbrain']['agent_install_instructions']}",
+            f"Standalone install: {status['gbrain']['standalone_install_command']}",
+        ])
+    return messages
+
+
+def check_dependencies(args: argparse.Namespace) -> dict[str, Any]:
+    status = dependency_status(args)
+    if args.dependency_mode == "off":
+        return status
+    messages = dependency_missing_messages(status, args.target)
+    if not messages:
+        return status
+    if args.dependency_mode == "strict":
+        raise SystemExit("Dependency check failed:\n" + "\n".join(f"- {message}" for message in messages))
+    print("Dependency check:")
+    for message in messages:
+        print(f"- {message}")
+    return status
+
+
 def as_list(value: Any) -> list[str]:
     if value is None:
         return []
@@ -662,16 +838,91 @@ def create_missing_profiles(hermes_home: Path, dry_run: bool, custom_specs: list
         run([hermes, "profile", "create", profile, "--clone"], env=env)
 
 
-def list_skill_names(profile: Path) -> list[str]:
+def skill_distribution_for_agent(name: str) -> dict[str, list[str]]:
+    return {
+        "gstack_skills": sorted(GSTACK_SKILLS_BY_AGENT.get(name, set())),
+        "gbrain_skills": sorted(GBRAIN_SKILLS_BY_AGENT.get(name, set())),
+    }
+
+
+def allowed_skills_for_agent(name: str, spec: dict[str, Any] | None = None) -> set[str]:
+    base = set(ALLOWED_SKILLS.get(name, set()))
+    if spec is not None:
+        base.update(spec["allowed_skills"])
+        base.update({"llm-wiki", "subagent-driven-development"})
+    bundle = skill_distribution_for_agent(name)
+    base.update(bundle["gstack_skills"])
+    base.update(bundle["gbrain_skills"])
+    return base
+
+
+def agent_skill_map(custom_specs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    records: dict[str, dict[str, Any]] = {}
+    for profile in PROFILES:
+        bundle = skill_distribution_for_agent(profile)
+        records[profile] = {
+            **bundle,
+            "allowed_skills": sorted(allowed_skills_for_agent(profile)),
+        }
+    for spec in custom_specs:
+        name = spec["name"]
+        bundle = skill_distribution_for_agent(name)
+        records[name] = {
+            **bundle,
+            "allowed_skills": sorted(allowed_skills_for_agent(name, spec)),
+        }
+    return records
+
+
+def dependency_notes_for_agent(name: str, status: dict[str, Any]) -> list[str]:
+    notes: list[str] = []
+    if GSTACK_SKILLS_BY_AGENT.get(name):
+        if status["gstack"]["hermes_skills_present"]:
+            notes.append("GStack Hermes skills detected under ~/.hermes/skills/gstack*.")
+        elif status["gstack"]["repo_present"]:
+            notes.append("GStack repo detected; run ./setup --host hermes before expecting Hermes skill commands.")
+        else:
+            notes.append(f"GStack missing; install with: {GSTACK_INSTALL_COMMAND}")
+    if GBRAIN_SKILLS_BY_AGENT.get(name):
+        if status["gbrain"]["skills_present"]:
+            notes.append(f"GBrain skills detected at {status['gbrain']['skills_dir']}.")
+        else:
+            notes.append(f"GBrain missing; read {GBRAIN_AGENT_INSTALL_URL}.")
+    return notes
+
+
+def gbrain_external_dirs(args: argparse.Namespace) -> list[Path]:
+    if args.dependencies["gbrain"]["skills_present"]:
+        return [gbrain_skills_dir(args)]
+    return []
+
+
+def merged_external_dirs(existing: Any, additions: list[Path], removable: list[Path]) -> list[str]:
+    existing_values = [str(Path(item).expanduser()) for item in as_list(existing)]
+    addition_values = [str(path) for path in additions]
+    blocked = {str(path) for path in removable}
+    merged = [value for value in existing_values if value not in blocked]
+    merged.extend(addition_values)
+    return list(dict.fromkeys(merged))
+
+
+def list_skill_names(profile: Path, extra_dirs: list[Path] | None = None) -> list[str]:
     names: set[str] = set()
-    for skill_md in (profile / "skills").rglob("SKILL.md"):
-        match = re.search(r"^name:\s*(.+?)\s*$", skill_md.read_text(encoding="utf-8", errors="ignore"), re.M)
-        if match:
-            names.add(match.group(1).strip().strip("\"'"))
+    roots = [profile / "skills"]
+    roots.extend(extra_dirs or [])
+    for root in roots:
+        if not root.exists():
+            continue
+        for skill_md in root.rglob("SKILL.md"):
+            match = re.search(r"^name:\s*(.+?)\s*$", skill_md.read_text(encoding="utf-8", errors="ignore"), re.M)
+            if match:
+                names.add(match.group(1).strip().strip("\"'"))
     return sorted(names)
 
 
 def load_yaml(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
     try:
         import yaml  # type: ignore
 
@@ -681,7 +932,14 @@ def load_yaml(path: Path) -> dict[str, Any]:
         if not ruby:
             raise SystemExit("Need PyYAML or Ruby stdlib YAML to update config.yaml")
         proc = subprocess.run(
-            [ruby, "-ryaml", "-rjson", "-e", "puts JSON.generate(YAML.load_file(ARGV[0]) || {})", str(path)],
+            [
+                ruby,
+                "-ryaml",
+                "-rjson",
+                "-e",
+                "data = YAML.respond_to?(:unsafe_load_file) ? YAML.unsafe_load_file(ARGV[0]) : YAML.load_file(ARGV[0]); puts JSON.generate(data || {})",
+                str(path),
+            ],
             text=True,
             capture_output=True,
             check=True,
@@ -922,9 +1180,16 @@ def refresh_profiles(args: argparse.Namespace, custom_specs: list[dict[str, Any]
 
         cfg_path = pdir / "config.yaml"
         cfg = load_yaml(cfg_path)
-        skills = list_skill_names(pdir)
         cfg.setdefault("skills", {})
-        cfg["skills"]["disabled"] = [s for s in skills if s not in ALLOWED_SKILLS[profile]]
+        external_dirs = gbrain_external_dirs(args)
+        cfg["skills"]["external_dirs"] = merged_external_dirs(
+            cfg["skills"].get("external_dirs"),
+            external_dirs,
+            [gbrain_skills_dir(args)],
+        )
+        skill_dirs = [args.hermes_home / "skills"] + [Path(path) for path in cfg["skills"]["external_dirs"]]
+        skills = list_skill_names(pdir, skill_dirs)
+        cfg["skills"]["disabled"] = [s for s in skills if s not in allowed_skills_for_agent(profile)]
         cfg.setdefault("delegation", {})
         cfg["delegation"].setdefault("default_toolsets", ["terminal", "file", "web"])
         cfg.setdefault("platform_toolsets", {})
@@ -990,12 +1255,19 @@ def refresh_profiles(args: argparse.Namespace, custom_specs: list[dict[str, Any]
 
         cfg_path = pdir / "config.yaml"
         cfg = load_yaml(cfg_path)
-        skills = list_skill_names(pdir)
         cfg.setdefault("skills", {})
+        external_dirs = gbrain_external_dirs(args)
+        cfg["skills"]["external_dirs"] = merged_external_dirs(
+            cfg["skills"].get("external_dirs"),
+            external_dirs,
+            [gbrain_skills_dir(args)],
+        )
+        skill_dirs = [args.hermes_home / "skills"] + [Path(path) for path in cfg["skills"]["external_dirs"]]
+        skills = list_skill_names(pdir, skill_dirs)
         if spec.get("allow_all_skills"):
             cfg["skills"]["disabled"] = []
         else:
-            allowed = set(spec["allowed_skills"]) | {"llm-wiki", "subagent-driven-development"}
+            allowed = allowed_skills_for_agent(profile, spec)
             cfg["skills"]["disabled"] = [s for s in skills if s not in allowed]
         cfg.setdefault("delegation", {})
         cfg["delegation"].setdefault("default_toolsets", ["terminal", "file", "web"])
@@ -1329,30 +1601,36 @@ def openclaw_custom_agent_markdown(spec: dict[str, Any], wiki_path: Path) -> str
         summary,
         custom_soul(spec),
         custom_memory(spec),
-        sorted(set(spec["allowed_skills"])),
+        sorted(allowed_skills_for_agent(spec["name"], spec)),
         wiki_path,
     )
 
 
-def openclaw_agent_records(custom_specs: list[dict[str, Any]], wiki_path: Path) -> list[dict[str, Any]]:
+def openclaw_agent_records(custom_specs: list[dict[str, Any]], wiki_path: Path, dependencies: dict[str, Any]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for profile in PROFILES:
+        bundle = skill_distribution_for_agent(profile)
         records.append({
             "name": profile,
             "kind": "core-agent",
             "role_summary": CORE_PROFILE_SUMMARY[profile],
             "prompt_file": f"agents/{profile}.md",
-            "allowed_skills": sorted(ALLOWED_SKILLS[profile]),
+            "allowed_skills": sorted(allowed_skills_for_agent(profile)),
+            **bundle,
+            "dependency_notes": dependency_notes_for_agent(profile, dependencies),
             "wiki_path": str(wiki_path),
             "subagent_report_target": profile,
         })
     for spec in custom_specs:
+        bundle = skill_distribution_for_agent(spec["name"])
         records.append({
             "name": spec["name"],
             "kind": "custom-peer-agent",
             "mission": spec["mission"],
             "prompt_file": f"agents/{spec['name']}.md",
-            "allowed_skills": sorted(set(spec["allowed_skills"])),
+            "allowed_skills": sorted(allowed_skills_for_agent(spec["name"], spec)),
+            **bundle,
+            "dependency_notes": dependency_notes_for_agent(spec["name"], dependencies),
             "routing_triggers": spec["routing_triggers"],
             "wiki_scope": spec["wiki_scope"],
             "discord_channel_name": spec["discord_channel_name"],
@@ -1394,6 +1672,8 @@ This directory is a non-invasive OpenClaw-compatible configuration package. It d
 
 ## Files
 - `manifest.json`: package metadata.
+- `dependencies.json`: detected GStack/GBrain dependency state and install hints.
+- `agent-skill-map.json`: role-based GStack/GBrain distribution matrix.
 - `agents.json`: structured agent registry.
 - `agents/*.md`: prompt and role-memory seeds for each core or custom Agent.
 - `routing-table.md`: coordinator routing table.
@@ -1428,7 +1708,7 @@ def init_openclaw_package(args: argparse.Namespace, custom_specs: list[dict[str,
     (package / "agents").mkdir(parents=True, exist_ok=True)
     (package / "wiki-template").mkdir(parents=True, exist_ok=True)
 
-    records = openclaw_agent_records(custom_specs, args.wiki_path)
+    records = openclaw_agent_records(custom_specs, args.wiki_path, args.dependencies)
     manifest = {
         "name": "opc-team",
         "target": "openclaw",
@@ -1440,6 +1720,8 @@ def init_openclaw_package(args: argparse.Namespace, custom_specs: list[dict[str,
         "compatibility_mode": "non-invasive package; openclaw.json is not modified",
     }
     write_generated_json(package / "manifest.json", manifest)
+    write_generated_json(package / "dependencies.json", args.dependencies)
+    write_generated_json(package / "agent-skill-map.json", agent_skill_map(custom_specs))
     write_generated_json(package / "agents.json", records)
     write_generated_json(package / "discord-channel-routing.json", openclaw_channel_routes(args, custom_specs))
     write_generated(package / "routing-table.md", routing_table(custom_specs))
@@ -1462,7 +1744,7 @@ DISCORD_HOME_CHANNEL_NAME=#agent-proposals
                 CORE_PROFILE_SUMMARY[profile],
                 SOUL[profile],
                 MEMORY[profile],
-                sorted(ALLOWED_SKILLS[profile]),
+                sorted(allowed_skills_for_agent(profile)),
                 args.wiki_path,
             ),
         )
@@ -1531,6 +1813,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target", choices=["hermes", "openclaw"], default="hermes", help="runtime/configuration target")
     parser.add_argument("--hermes-home", type=Path, default=Path.home() / ".hermes")
     parser.add_argument("--openclaw-home", type=Path, default=Path.home() / ".openclaw")
+    parser.add_argument("--dependency-mode", choices=["prompt", "strict", "off"], default="prompt", help="how to handle missing GStack/GBrain dependencies")
+    parser.add_argument("--gstack-root", type=Path, help="GStack checkout root; defaults to ~/gstack")
+    parser.add_argument("--gbrain-root", type=Path, help="GBrain checkout root; defaults to ~/gbrain")
     parser.add_argument("--wiki-path", type=Path, help="absolute shared Wiki path; overrides vault selection")
     parser.add_argument("--vault-path", type=Path, help="shared vault root used with --wiki-folder-name")
     parser.add_argument("--wiki-folder-name", default=DEFAULT_WIKI_FOLDER_NAME, help="relative folder inside the selected vault; default '.' means the vault root")
@@ -1553,7 +1838,12 @@ def main() -> int:
     args = parse_args()
     args.hermes_home = args.hermes_home.expanduser()
     args.openclaw_home = args.openclaw_home.expanduser()
+    args.gstack_root_explicit = args.gstack_root is not None
+    args.gbrain_root_explicit = args.gbrain_root is not None
+    args.gstack_root = (args.gstack_root or Path.home() / "gstack").expanduser()
+    args.gbrain_root = (args.gbrain_root or Path.home() / "gbrain").expanduser()
     args.wiki_path = resolve_wiki_path(args)
+    args.dependencies = check_dependencies(args)
     requested_custom_specs = load_custom_specs(args)
 
     if args.target == "hermes":
