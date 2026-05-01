@@ -43,14 +43,16 @@ Generate one JSON object per custom agent:
 Pass a list of these objects to:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --custom-profile-spec /path/to/custom-profiles.json
 ```
 
 Or pass one object inline:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --custom-profile-json '{"name":"secretary","mission":"Manage briefs, follow-ups, and personal operations.","responsibilities":["Prepare daily briefs"],"boundaries":["Do not expose secrets"],"allowed_skills":["google-workspace","notion","linear","obsidian"],"routing_triggers":["schedule","brief","follow up"],"wiki_scope":"Administrative workflows and follow-up records."}'
 ```
 
@@ -64,7 +66,8 @@ The initializer includes two example presets:
 Use:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --custom-profile-preset growth-agent \
   --custom-profile-preset secretary
 ```

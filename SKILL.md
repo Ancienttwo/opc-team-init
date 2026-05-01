@@ -22,37 +22,42 @@ Use this skill to bootstrap or refresh an OPC Agent Team for Hermes or OpenClaw:
 
 When this skill is invoked, first ask where the shared vault should live, then ask whether the user wants to add custom peer agents. If yes, collect a short description for each custom agent and generate a spec using `references/custom-profiles.md`.
 
-Run the initializer script from this skill. Hermes remains the default target:
+Run the initializer script from this skill. The default location can be overridden if the skill is installed somewhere else:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py"
 ```
 
 Default shared vault path is `~/Documents/vault`. To make the user choose a shared vault interactively:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --select-vault
 ```
 
 For a non-interactive vault choice:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --vault-path "$HOME/Documents/vault"
 ```
 
 For OpenClaw, generate a non-invasive package under `~/.openclaw/opc-team`:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --target openclaw
 ```
 
 With real Discord values:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --discord-channel-id 123456789012345678 \
   --discord-user-id 234567890123456789
 ```
@@ -60,7 +65,8 @@ python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
 With built-in example custom agents:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --custom-profile-preset growth-agent \
   --custom-profile-preset secretary
 ```
@@ -68,7 +74,8 @@ python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
 With an LLM-generated custom agent spec:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --custom-profile-spec /path/to/custom-profiles.json
 ```
 

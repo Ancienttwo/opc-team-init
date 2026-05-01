@@ -9,14 +9,16 @@ This skill treats OpenClaw as a configuration-package target, not as a live prof
 ## Command
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --target openclaw
 ```
 
 With custom agents:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --target openclaw \
   --custom-profile-preset growth-agent \
   --custom-profile-preset secretary

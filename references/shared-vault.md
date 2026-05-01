@@ -23,23 +23,26 @@ Current default:
 Interactive selection:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --select-vault
 ```
 
 Explicit vault root:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
-  --vault-path "/absolute/path/to/vault" \
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
+  --vault-path "$HOME/Documents/vault" \
   --wiki-folder-name "."
 ```
 
 Exact Wiki directory override:
 
 ```bash
-python3 /Users/chris/.codex/skills/opc-team-init/scripts/init_opc_team.py \
-  --wiki-path "/absolute/path/to/vault"
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
+  --wiki-path "$HOME/Documents/vault"
 ```
 
 ## Semantics
