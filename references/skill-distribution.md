@@ -5,7 +5,7 @@ Use this reference when changing which skills belong to each OPC Agent.
 ## Rules
 
 - Use role-specific skill sets, not "everything everywhere".
-- `coordinator` owns GBrain always-on and brain-first behavior.
+- Hermes: default/coordinator-primary owns GBrain always-on and brain-first behavior. OpenClaw: the generated `coordinator` agent owns it.
 - Specialist agents only receive task-specific GBrain skills.
 - Do not vendor GStack or GBrain into this skill.
 
@@ -13,7 +13,7 @@ Use this reference when changing which skills belong to each OPC Agent.
 
 | Agent | GStack skills | GBrain skills |
 |---|---|---|
-| `coordinator` | `office-hours`, `autoplan`, `plan-ceo-review`, `plan-eng-review`, `plan-design-review`, `plan-devex-review`, `retro`, `checkpoint`, `context-save`, `context-restore`, `learn`, `setup-gbrain` | `brain-ops`, `signal-detector`, `query`, `reports`, `daily-task-manager`, `cron-scheduler`, `minion-orchestrator`, `maintain`, `skillpack-check` |
+| `default` / `coordinator-primary` | `office-hours`, `autoplan`, `plan-ceo-review`, `plan-eng-review`, `plan-design-review`, `plan-devex-review`, `retro`, `checkpoint`, `context-save`, `context-restore`, `learn`, `setup-gbrain` | `brain-ops`, `signal-detector`, `query`, `reports`, `daily-task-manager`, `cron-scheduler`, `minion-orchestrator`, `maintain`, `skillpack-check` |
 | `researcher` | `investigate`, `browse`, `scrape`, `benchmark-models` | `query`, `data-research`, `ingest`, `idea-ingest`, `media-ingest`, `meeting-ingestion`, `enrich`, `citation-fixer` |
 | `writer` | `office-hours`, `design-consultation`, `document-release`, `make-pdf` | `query`, `reports`, `publish`, `briefing` |
 | `builder` | `investigate`, `review`, `qa`, `qa-only`, `cso`, `health`, `ship`, `land-and-deploy`, `setup-deploy`, `benchmark`, `canary`, `careful`, `guard`, `freeze`, `unfreeze`, `devex-review`, `design-review`, `browse` | `query`, `testing`, `cross-modal-review` |

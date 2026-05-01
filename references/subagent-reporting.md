@@ -17,7 +17,7 @@ Do not spawn a Subagent when the next main-agent action depends on the answer im
 
 Every Subagent must report to exactly one owning agent:
 
-- `coordinator`: plans, routing, status, decisions, integration summaries.
+- `default` / `coordinator`: plans, routing, status, decisions, integration summaries. Use `default` for Hermes and `coordinator` for OpenClaw packages.
 - `researcher`: evidence, source notes, contradictions, uncertainty.
 - `writer`: outlines, drafts, editorial variants, audience adaptation.
 - `builder`: patches, test results, implementation risks, code review findings.
@@ -30,7 +30,7 @@ Subagent reports should be compact and copyable:
 ```markdown
 ## Subagent Report
 
-Target: coordinator | researcher | writer | builder | <custom-profile-name>
+Target: default | coordinator | researcher | writer | builder | <custom-profile-name>
 Task:
 Result:
 Evidence / Files:
@@ -49,7 +49,7 @@ Use a bounded prompt:
 
 ```text
 You are a temporary Subagent for the OPC Agent Team.
-Owning agent target: <coordinator|researcher|writer|builder|custom-profile-name>.
+Owning agent target: <default|coordinator|researcher|writer|builder|custom-profile-name>.
 Task: <bounded task>.
 Constraints: do not modify unrelated files; do not write long-term role memory; report only the result.
 Return the Subagent Report shape exactly.

@@ -17,6 +17,8 @@ from typing import Any
 
 
 PROFILES = ("coordinator", "researcher", "writer", "builder")
+HERMES_SPECIALIST_PROFILES = ("researcher", "writer", "builder")
+RESERVED_CUSTOM_PROFILE_NAMES = set(PROFILES) | {"default"}
 PLACEHOLDER_CHANNEL = "<AGENT_PROPOSALS_CHANNEL_ID>"
 CUSTOM_REGISTRY_NAME = "OPC_CUSTOM_PROFILES.json"
 ROUTING_TABLE_NAME = "OPC_ROUTING_TABLE.md"
@@ -234,7 +236,7 @@ PRESET_CUSTOM_PROFILES: dict[str, dict[str, Any]] = {
         ],
         "boundaries": [
             "Do not invent metrics, audience feedback, or conversion data",
-            "Do not change product direction without coordinator approval",
+            "Do not change product direction without default/coordinator-primary approval",
             "Do not publish externally without explicit user approval",
         ],
         "allowed_skills": [
@@ -404,9 +406,61 @@ SOUL = {
 }
 
 
+DEFAULT_COORDINATOR_SOUL = """\
+# Coordinator-Primary Default Profile
+
+你是用户的主 Hermes Agent，也是整个 OPC Agent Team 的协调员。
+
+default 承担 coordinator 的职责，但保留 default 既有的长期记忆、历史会话、文档与本地知识上下文。你不是一个临时协调 profile，而是用户的主工作入口。
+
+## 核心职责
+- 定义目标：把用户输入改写成可执行、可验收的目标。
+- 拆分任务：把复杂任务拆成 researcher、writer、builder、custom Profile 或 temporary subagent 能完成的工作包。
+- 路由任务：选择唯一主责角色，必要时说明协作角色。
+- 汇总结果：把不同角色和 Subagent 的报告合并成一个连贯交付。
+- 维护共享知识：项目状态、决策记录、交接单、复盘优先写入共享 Wiki 或其他长期文档，不把短期项目状态塞进 profile memory。
+- 统一 Brain-first：GBrain 的 always-on、signal 和 brain-first lookup 由你统一调度，避免多个 Profile 重复写入。
+
+## 角色边界
+- `/profiles/coordinator` 如果存在，只是 legacy backup/template；不要把常规任务路由给 coordinator profile，也不要让它与 default 争夺主协调身份。
+- 不亲自做深度研究时，把事实验证交给 researcher。
+- 不亲自写最终内容稿时，把表达成稿交给 writer。
+- 不亲自实现代码或系统时，把落地交给 builder。
+- 不把具体项目状态、临时任务进度写入长期 memory。
+
+## Subagent 规则
+- 当任务独立、上下文重、适合并行时，可以 spawn temporary Subagent。
+- 每个 Subagent 必须汇报给唯一主责 Profile，并使用紧凑报告格式。
+- 你负责把 Subagent 报告压缩、路由、审查和归档，避免主线程装入所有原始上下文。
+
+## 工作方式
+- 默认用中文汇报。
+- 面对复杂任务，优先形成提案卡：目标、背景、约束、交付物、建议路由、下一检查点。
+- 只有当继续执行会明显违背用户意图时才提问。
+- 完成后说明做了什么、为什么这么做、关键取舍是什么。
+- 保留 default 已有的长期用户记忆、Obsidian/知识蒸馏约定、项目上下文与已有文档习惯。
+
+## 模型与角色路由规则
+- 使用 OpenAI Codex GPT-5.x 三档模型分配前，必须确认 `openai-codex` OAuth 已登录且可用；如果 OAuth 不存在或失效，先要求重新登录或切换到已认证 provider。
+- default/coordinator-primary 负责长上下文整合、总控、跨角色协调、结果合并和记忆边界，适合 GPT-5.4 / 1M 上下文工作。
+- researcher 和 builder 适合 GPT-5.5：深度研究、证据链、复杂实现、架构判断、难调试和高风险审查。
+- writer 适合 GPT-5.4：长材料整合、结构设计、材料压缩、最终成稿与高上下文表达任务。
+- secretary 和 growth-agent 适合 GPT-5.3-Codex-Spark：brief、follow-up、行政追踪、日常增长实验、渠道复盘和低风险状态同步。
+- 如果任务同时需要长上下文和复杂执行，先由 default/coordinator-primary 整合背景，再把收敛后的子任务路由给合适角色。
+"""
+
+
+LEGACY_COORDINATOR_SOUL = """\
+# Coordinator Profile
+
+> Legacy backup/template only. Default profile (`~/.hermes`) is now the active coordinator-primary entrypoint. Do not use this profile as the routine routing target unless the user explicitly asks to inspect, compare, or restore the old coordinator setup.
+
+""" + SOUL["coordinator"].split("\n", 1)[1]
+
+
 MEMORY = {
     "coordinator": """\
-Coordinator 的长期经验：
+Default/coordinator-primary 的长期经验：
 §
 复杂任务先转成提案卡：目标、背景、约束、交付物、建议路由、下一检查点。
 §
@@ -475,7 +529,7 @@ This Discord channel is #agent-proposals for the Hermes OPC Agent Team.
 Treat each inbound message as a proposal intake, not as direct execution.
 Respond in Chinese unless the user explicitly requests another language.
 Convert the request into a proposal card with these fields: goal, background, constraints, deliverable, suggested route, next checkpoint.
-Suggested route must pick one primary owner from coordinator, researcher, writer, builder, or temporary subagent.
+Suggested route must pick one primary owner from default/coordinator-primary, researcher, writer, builder, a custom Profile, or temporary subagent.
 Temporary subagents may be used for independent, context-heavy, bounded work; they must report back using the Subagent Report shape.
 Do not write project state into profile memory; write durable state to the shared Wiki when tools are available.
 Ask only when intent is genuinely ambiguous enough that proceeding would likely produce the wrong deliverable.
@@ -503,7 +557,7 @@ Temporary Subagents exist to save the four main Profiles from loading excessive 
 - The result can be reported in a bounded shape.
 
 ## Report Targets
-- Coordinator: routing, status, integration, decisions.
+- Default/coordinator-primary or generated coordinator: routing, status, integration, decisions.
 - Researcher: evidence, sources, contradictions, uncertainty.
 - Writer: outlines, drafts, editorial variants.
 - Builder: patches, tests, implementation risks, review findings.
@@ -514,7 +568,7 @@ Temporary Subagents exist to save the four main Profiles from loading excessive 
 ```markdown
 ## Subagent Report
 
-Target: coordinator | researcher | writer | builder | <custom-profile-name>
+Target: default | coordinator | researcher | writer | builder | <custom-profile-name>
 Task:
 Result:
 Evidence / Files:
@@ -636,11 +690,11 @@ def profile_dir(hermes_home: Path, profile: str) -> Path:
 
 
 def registry_path(hermes_home: Path) -> Path:
-    return profile_dir(hermes_home, "coordinator") / CUSTOM_REGISTRY_NAME
+    return hermes_home / CUSTOM_REGISTRY_NAME
 
 
 def routing_table_path(hermes_home: Path) -> Path:
-    return profile_dir(hermes_home, "coordinator") / ROUTING_TABLE_NAME
+    return hermes_home / ROUTING_TABLE_NAME
 
 
 def openclaw_package_dir(openclaw_home: Path) -> Path:
@@ -786,8 +840,8 @@ def normalize_profile_name(name: str) -> str:
     normalized = re.sub(r"[^a-z0-9_-]+", "-", name.strip().lower()).strip("-_")
     if not PROFILE_NAME_RE.match(normalized):
         raise SystemExit(f"Invalid custom profile name: {name!r}")
-    if normalized in PROFILES:
-        raise SystemExit(f"Custom profile {normalized!r} conflicts with a core Profile")
+    if normalized in RESERVED_CUSTOM_PROFILE_NAMES:
+        raise SystemExit(f"Custom profile {normalized!r} conflicts with a reserved Hermes/OpenClaw profile")
     return normalized
 
 
@@ -819,7 +873,7 @@ def normalize_custom_spec(raw: dict[str, Any]) -> dict[str, Any]:
         spec["boundaries"] = [
             "Do not write secrets into memory, Wiki, or config files",
             "Do not make external commitments without explicit user approval",
-            "Do not bypass coordinator routing for cross-profile work",
+            "Do not bypass default/coordinator-primary routing for cross-profile work",
         ]
     if not spec["routing_triggers"]:
         spec["routing_triggers"] = [name.replace("-", " "), name]
@@ -849,7 +903,11 @@ def load_custom_specs(args: argparse.Namespace) -> list[dict[str, Any]]:
 
 def read_custom_registry(hermes_home: Path) -> list[dict[str, Any]]:
     path = registry_path(hermes_home)
-    return read_custom_registry_file(path)
+    specs = read_custom_registry_file(path)
+    if specs:
+        return specs
+    legacy_path = profile_dir(hermes_home, "coordinator") / CUSTOM_REGISTRY_NAME
+    return read_custom_registry_file(legacy_path)
 
 
 def read_custom_registry_file(path: Path) -> list[dict[str, Any]]:
@@ -894,7 +952,7 @@ def merge_openclaw_custom_registry(openclaw_home: Path, new_specs: list[dict[str
 def create_missing_profiles(hermes_home: Path, dry_run: bool, custom_specs: list[dict[str, Any]]) -> None:
     hermes = ensure_hermes()
     env = command_env(hermes_home)
-    for profile in list(PROFILES) + [spec["name"] for spec in custom_specs]:
+    for profile in list(HERMES_SPECIALIST_PROFILES) + [spec["name"] for spec in custom_specs]:
         pdir = profile_dir(hermes_home, profile)
         if pdir.exists():
             print(f"exists: {pdir}")
@@ -1046,6 +1104,60 @@ def dump_yaml(path: Path, data: dict[str, Any]) -> None:
         )
 
 
+def has_openai_codex_oauth(hermes_home: Path) -> bool:
+    path = hermes_home / "auth.json"
+    if not path.exists():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    state = data.get("providers", {}).get("openai-codex")
+    if not isinstance(state, dict):
+        return False
+    tokens = state.get("tokens")
+    return isinstance(tokens, dict) and bool(tokens.get("access_token"))
+
+
+def config_uses_openai_codex(path: Path) -> bool:
+    cfg = load_yaml(path)
+    model_cfg = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
+    delegation_cfg = cfg.get("delegation") if isinstance(cfg.get("delegation"), dict) else {}
+    provider_values = {
+        str(model_cfg.get("provider", "")),
+        str(delegation_cfg.get("provider", "")),
+    }
+    base_url_values = {
+        str(model_cfg.get("base_url", "")),
+        str(delegation_cfg.get("base_url", "")),
+    }
+    return "openai-codex" in provider_values or any("backend-api/codex" in value for value in base_url_values)
+
+
+def validate_openai_codex_oauth(args: argparse.Namespace) -> None:
+    config_paths = [args.hermes_home / "config.yaml"]
+    profiles_dir = args.hermes_home / "profiles"
+    if profiles_dir.exists():
+        config_paths.extend(sorted(profiles_dir.glob("*/config.yaml")))
+
+    codex_configs = [path for path in config_paths if path.exists() and config_uses_openai_codex(path)]
+    if not codex_configs or has_openai_codex_oauth(args.hermes_home):
+        return
+
+    paths = "\n".join(f"- {path}" for path in codex_configs)
+    message = (
+        "OpenAI Codex model routing requires Hermes-owned openai-codex OAuth, "
+        "but no usable OAuth state was found in auth.json. Run "
+        "`hermes auth add openai-codex --type oauth` or switch these configs "
+        "to an authenticated provider before refreshing OPC profiles.\n"
+        f"Codex-backed configs found:\n{paths}"
+    )
+    if args.dry_run:
+        print(f"dry-run warning: {message}")
+        return
+    raise SystemExit(message)
+
+
 def upsert_env(path: Path, values: dict[str, str], commented_placeholders: dict[str, str]) -> None:
     lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
 
@@ -1076,11 +1188,38 @@ def upsert_env(path: Path, values: dict[str, str], commented_placeholders: dict[
     if missing_placeholders:
         if lines and lines[-1].strip():
             lines.append("")
-        lines.append("# Discord #agent-proposals wiring. Fill before starting coordinator gateway.")
+        lines.append("# Discord #agent-proposals wiring. Fill before starting the gateway.")
         for key, value in missing_placeholders:
             lines.append(f"# {key}={value}")
 
     path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+
+
+DEFAULT_COORDINATOR_BEGIN = "<!-- OPC_TEAM_DEFAULT_COORDINATOR_BEGIN -->"
+DEFAULT_COORDINATOR_END = "<!-- OPC_TEAM_DEFAULT_COORDINATOR_END -->"
+
+
+def managed_default_block(content: str) -> str:
+    return f"{DEFAULT_COORDINATOR_BEGIN}\n{textwrap.dedent(content).strip()}\n{DEFAULT_COORDINATOR_END}\n"
+
+
+def upsert_managed_default_block(path: Path, content: str, placement: str) -> None:
+    block = managed_default_block(content)
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    pattern = re.compile(
+        rf"{re.escape(DEFAULT_COORDINATOR_BEGIN)}.*?{re.escape(DEFAULT_COORDINATOR_END)}\n?",
+        re.S,
+    )
+    if pattern.search(existing):
+        updated = pattern.sub(block, existing).rstrip() + "\n"
+    elif existing.startswith("# Coordinator-Primary Default Profile\n"):
+        updated = block
+    elif placement == "top":
+        updated = (block + "\n" + existing.strip() + "\n").strip() + "\n"
+    else:
+        updated = (existing.rstrip() + "\n\n" + block).strip() + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(updated, encoding="utf-8")
 
 
 def markdown_list(items: list[str]) -> str:
@@ -1092,7 +1231,7 @@ def custom_soul(spec: dict[str, Any]) -> str:
     return f"""\
 # {name} Profile
 
-你是 Hermes OPC Agent Team 的用户自定义专门 Agent：`{name}`。你与 coordinator、researcher、writer、builder 平级，专门服务用户的特别需求。
+你是 Hermes OPC Agent Team 的用户自定义专门 Agent：`{name}`。你与 default/coordinator-primary、researcher、writer、builder 平级，专门服务用户的特别需求。
 
 ## Mission
 {spec["mission"]}
@@ -1103,7 +1242,7 @@ def custom_soul(spec: dict[str, Any]) -> str:
 ## Subagent 规则
 - 当任务独立、上下文重、适合并行时，可以 spawn temporary Subagent。
 - 你 spawn 的 Subagent 只服务 `{name}`，必须向 `{name}` 汇报，不直接汇报给四个核心 Profile。
-- 你负责压缩、审查和合并 Subagent 报告，再按需交给 coordinator 或写入共享 Wiki。
+- 你负责压缩、审查和合并 Subagent 报告，再按需交给 default/coordinator-primary 或写入共享 Wiki。
 
 ## 边界
 {markdown_list(spec["boundaries"])}
@@ -1113,7 +1252,7 @@ def custom_soul(spec: dict[str, Any]) -> str:
 
 ## 工作方式
 - 默认用中文汇报。
-- 先判断任务是否属于 `{name}` 的 mission；跨边界任务交还 coordinator 路由。
+- 先判断任务是否属于 `{name}` 的 mission；跨边界任务交还 default/coordinator-primary 路由。
 - 项目状态、决策、交接和 durable Subagent summary 写入 `WIKI_PATH` 指向的共享 Wiki。
 - 完成后报告做了什么、为什么这么做、取舍和下一步。
 """
@@ -1133,14 +1272,14 @@ Subagent 只服务 {name} 本身；临时 Subagent 不写长期 memory，只返�
 §
 Durable state belongs in shared Wiki scope: {spec["wiki_scope"]}
 §
-跨出职责边界时交还 coordinator 路由，不擅自替其他 Profile 做最终决策。
+跨出职责边界时交还 default/coordinator-primary 路由，不擅自替其他 Profile 做最终决策。
 """
 
 
 def custom_channel_prompt(spec: dict[str, Any]) -> str:
     return f"""\
 This Discord channel belongs to custom Hermes Profile `{spec["name"]}`.
-Use the single coordinator-owned Discord bot token, but route this channel's work to `{spec["name"]}`.
+Use the single default/coordinator-primary owned Discord bot token, but route this channel's work to `{spec["name"]}`.
 Respond in Chinese unless the user explicitly requests another language.
 Profile mission: {spec["mission"]}
 Routing triggers: {", ".join(spec["routing_triggers"])}
@@ -1165,7 +1304,7 @@ def routing_table(custom_specs: list[dict[str, Any]]) -> str:
         "# OPC Routing Table",
         "",
         "Core Profiles:",
-        "- coordinator: goals, planning, routing, integration, decisions.",
+        "- default (coordinator-primary): goals, planning, routing, integration, decisions.",
         "- researcher: evidence, source validation, uncertainty.",
         "- writer: final prose, structure, audience adaptation.",
         "- builder: implementation, debugging, tests, delivery.",
@@ -1201,7 +1340,7 @@ def custom_profiles_page(custom_specs: list[dict[str, Any]], today: str) -> str:
         "",
         "# Custom Profiles",
         "",
-        "Custom Profiles are user-defined peer Hermes Profiles. They are not children of coordinator, researcher, writer, or builder.",
+        "Custom Profiles are user-defined peer Hermes Profiles. They are not children of default/coordinator-primary, researcher, writer, or builder.",
         "",
     ]
     if not custom_specs:
@@ -1242,9 +1381,76 @@ def coordinator_discord_config(args: argparse.Namespace, custom_specs: list[dict
     return free_response, prompts
 
 
+def refresh_default_coordinator(args: argparse.Namespace, custom_specs: list[dict[str, Any]]) -> None:
+    if args.dry_run:
+        print("dry-run: would refresh default as coordinator-primary")
+        return
+
+    upsert_managed_default_block(args.hermes_home / "SOUL.md", DEFAULT_COORDINATOR_SOUL, "top")
+
+    memories = args.hermes_home / "memories"
+    memories.mkdir(exist_ok=True)
+    upsert_managed_default_block(memories / "MEMORY.md", coordinator_memory(custom_specs), "bottom")
+
+    cfg_path = args.hermes_home / "config.yaml"
+    cfg = load_yaml(cfg_path)
+    cfg.setdefault("skills", {})
+    external_dirs = gbrain_external_dirs(args)
+    cfg["skills"]["external_dirs"] = merged_external_dirs(
+        cfg["skills"].get("external_dirs"),
+        external_dirs,
+        [gbrain_skills_dir(args)],
+    )
+    cfg.setdefault("delegation", {})
+    cfg["delegation"].pop("default_toolsets", None)
+    cfg.setdefault("platform_toolsets", {})
+    cfg["platform_toolsets"].setdefault("cli", [])
+    if "delegation" not in cfg["platform_toolsets"]["cli"]:
+        cfg["platform_toolsets"]["cli"].append("delegation")
+
+    if args.discord_channel_id:
+        free_response, prompts = coordinator_discord_config(args, custom_specs)
+        cfg.setdefault("discord", {})
+        cfg["discord"]["require_mention"] = True
+        cfg["discord"]["auto_thread"] = True
+        cfg["discord"]["reactions"] = True
+        cfg["discord"]["free_response_channels"] = free_response
+        cfg["discord"]["channel_prompts"] = prompts
+    dump_yaml(cfg_path, cfg)
+
+    env_values = {"WIKI_PATH": str(args.wiki_path)}
+    if args.discord_bot_token:
+        env_values["DISCORD_BOT_TOKEN"] = args.discord_bot_token
+    if args.discord_user_id:
+        env_values["DISCORD_ALLOWED_USERS"] = args.discord_user_id
+    if args.discord_channel_id:
+        env_values["DISCORD_HOME_CHANNEL"] = args.discord_channel_id
+        free_response, _prompts = coordinator_discord_config(args, custom_specs)
+        if PLACEHOLDER_CHANNEL not in free_response:
+            env_values["DISCORD_FREE_RESPONSE_CHANNELS"] = free_response
+        env_values["DISCORD_HOME_CHANNEL_NAME"] = "#agent-proposals"
+    upsert_env(args.hermes_home / ".env", env_values, {})
+
+    setup = args.hermes_home / "DISCORD_AGENT_PROPOSALS_SETUP.md"
+    setup.write_text(discord_setup_doc(), encoding="utf-8")
+    routing_table_path(args.hermes_home).write_text(routing_table(custom_specs), encoding="utf-8")
+
+
+def mark_legacy_coordinator_profile(args: argparse.Namespace) -> None:
+    pdir = profile_dir(args.hermes_home, "coordinator")
+    if not pdir.exists():
+        return
+    if args.dry_run:
+        print("dry-run: would mark profiles/coordinator as legacy backup")
+        return
+    (pdir / "SOUL.md").write_text(textwrap.dedent(LEGACY_COORDINATOR_SOUL).strip() + "\n", encoding="utf-8")
+
+
 def refresh_profiles(args: argparse.Namespace, custom_specs: list[dict[str, Any]]) -> None:
-    channel_id = args.discord_channel_id or PLACEHOLDER_CHANNEL
-    for profile in PROFILES:
+    refresh_default_coordinator(args, custom_specs)
+    mark_legacy_coordinator_profile(args)
+
+    for profile in HERMES_SPECIALIST_PROFILES:
         pdir = profile_dir(args.hermes_home, profile)
         if not pdir.exists():
             print(f"skip missing profile: {profile}")
@@ -1257,8 +1463,7 @@ def refresh_profiles(args: argparse.Namespace, custom_specs: list[dict[str, Any]
         seed_auth_if_missing(args.hermes_home, pdir, args.no_copy_auth)
         memories = pdir / "memories"
         memories.mkdir(exist_ok=True)
-        memory_text = coordinator_memory(custom_specs) if profile == "coordinator" else textwrap.dedent(MEMORY[profile]).strip() + "\n"
-        (memories / "MEMORY.md").write_text(memory_text, encoding="utf-8")
+        (memories / "MEMORY.md").write_text(textwrap.dedent(MEMORY[profile]).strip() + "\n", encoding="utf-8")
 
         cfg_path = pdir / "config.yaml"
         cfg = load_yaml(cfg_path)
@@ -1283,40 +1488,13 @@ def refresh_profiles(args: argparse.Namespace, custom_specs: list[dict[str, Any]
         cfg["discord"]["require_mention"] = True
         cfg["discord"]["auto_thread"] = True
         cfg["discord"]["reactions"] = True
-        if profile == "coordinator":
-            free_response, prompts = coordinator_discord_config(args, custom_specs)
-            cfg["discord"]["free_response_channels"] = free_response
-            cfg["discord"]["channel_prompts"] = prompts
-        else:
-            cfg["discord"]["free_response_channels"] = ""
-            cfg["discord"]["channel_prompts"] = {}
+        cfg["discord"]["free_response_channels"] = ""
+        cfg["discord"]["channel_prompts"] = {}
         dump_yaml(cfg_path, cfg)
 
         env_values = {"WIKI_PATH": str(args.wiki_path)}
         placeholders: dict[str, str] = {}
-        if profile == "coordinator":
-            free_response, _prompts = coordinator_discord_config(args, custom_specs)
-            if args.discord_bot_token:
-                env_values["DISCORD_BOT_TOKEN"] = args.discord_bot_token
-            if args.discord_user_id:
-                env_values["DISCORD_ALLOWED_USERS"] = args.discord_user_id
-            if args.discord_channel_id:
-                env_values["DISCORD_HOME_CHANNEL"] = args.discord_channel_id
-            if PLACEHOLDER_CHANNEL not in free_response:
-                env_values["DISCORD_FREE_RESPONSE_CHANNELS"] = free_response
-            env_values["DISCORD_HOME_CHANNEL_NAME"] = "#agent-proposals"
-            placeholders = {
-                "DISCORD_BOT_TOKEN": "<coordinator-bot-token>",
-                "DISCORD_ALLOWED_USERS": "<your-discord-user-id>",
-                "DISCORD_HOME_CHANNEL": "<agent-proposals-channel-id>",
-                "DISCORD_FREE_RESPONSE_CHANNELS": "<agent-proposals-channel-id>",
-            }
         upsert_env(pdir / ".env", env_values, placeholders)
-
-        if profile == "coordinator":
-            setup = pdir / "DISCORD_AGENT_PROPOSALS_SETUP.md"
-            setup.write_text(discord_setup_doc(), encoding="utf-8")
-            routing_table_path(args.hermes_home).write_text(routing_table(custom_specs), encoding="utf-8")
 
     for spec in custom_specs:
         profile = spec["name"]
@@ -1370,9 +1548,9 @@ def discord_setup_doc() -> str:
     return """\
 # Discord #agent-proposals Setup
 
-This profile owns the Discord proposal intake channel for the Hermes OPC Agent Team.
+The default Hermes profile owns the Discord proposal intake channel for the Hermes OPC Agent Team.
 
-Fill these in `profiles/coordinator/.env` before starting the coordinator gateway:
+Fill these in the default `.env` before starting the default gateway:
 
 ```bash
 DISCORD_BOT_TOKEN=<coordinator-bot-token>
@@ -1382,19 +1560,19 @@ DISCORD_FREE_RESPONSE_CHANNELS=<agent-proposals-channel-id>
 DISCORD_HOME_CHANNEL_NAME=#agent-proposals
 ```
 
-Replace `<AGENT_PROPOSALS_CHANNEL_ID>` in `profiles/coordinator/config.yaml` with the same channel ID if the initializer was run without `--discord-channel-id`.
+When using the Hermes target, run the initializer with `--discord-channel-id` so the default `config.yaml` receives the channel prompt. Placeholder channel IDs are not written into default config.
 
 After filling real values:
 
 ```bash
-coordinator gateway install
-coordinator gateway start
-coordinator gateway status
+hermes gateway install
+hermes gateway start
+hermes gateway status
 ```
 
 In Discord, run `/sethome` inside `#agent-proposals` once the bot is present.
 
-Policy: only coordinator connects to Discord. Researcher, writer, and builder remain internal unless a separate bot and channel policy are intentionally added.
+Policy: only default/coordinator-primary connects to Discord. Researcher, writer, and builder remain internal unless a separate bot and channel policy are intentionally added.
 """
 
 
@@ -1478,7 +1656,7 @@ Rule: add a tag to this taxonomy before using it on a maintained page.
 > Last updated: {today} | Total maintained pages: 5
 
 ## Concepts
-- [[opc-agent-team]] — Four-role Hermes team model for coordinating long-running work.
+- [[opc-agent-team]] — Default-as-coordinator Hermes team model for coordinating long-running work.
 - [[shared-wiki-memory]] — Shared memory layer that keeps project state out of individual Profile memory.
 - [[subagent-reporting-protocol]] — Compact report contract for temporary Subagents.
 
@@ -1528,7 +1706,7 @@ sources: [raw/articles/knoyee-hermes-opc-multi-profile-2026-04-29.md]
 OPC Agent Team 是一套把 Hermes 拆成多个长期 Profile 的工作系统。目标不是多开聊天窗口，而是建立清晰的角色边界、记忆边界和交付流程。
 
 ## Roles
-- Coordinator: 定义目标、拆分任务、路由角色、汇总结果、维护 [[shared-wiki-memory]]。
+- Default/coordinator-primary: 定义目标、拆分任务、路由角色、汇总结果、维护 [[shared-wiki-memory]]。
 - Researcher: 收集证据、交叉验证、标注不确定性。
 - Writer: 把可靠材料组织成清晰内容。
 - Builder: 把计划落地成可运行、可测试、可交付的系统。
@@ -1587,17 +1765,17 @@ sources: [raw/articles/knoyee-hermes-opc-multi-profile-2026-04-29.md]
 # OPC Agent Team Operating Model
 
 ## Current Configuration
-- Long-term Profiles: coordinator, researcher, writer, builder.
+- Long-term Hermes Profiles: default/coordinator-primary, researcher, writer, builder.
 - Custom peer Profiles: see [[custom-profiles]].
 - Shared memory: [[shared-wiki-memory]] at `WIKI_PATH`.
-- Proposal intake: Discord `#agent-proposals`, owned by coordinator.
+- Proposal intake: Discord `#agent-proposals`, owned by default/coordinator-primary.
 - Temporary execution: Subagents are used only for bounded local tasks and report through [[subagent-reporting-protocol]].
 
 ## Default Flow
-1. Coordinator turns user input into a proposal card.
-2. Coordinator routes to one primary owner: a core Profile, a custom Profile, or bounded temporary Subagent work.
+1. Default/coordinator-primary turns user input into a proposal card.
+2. Default/coordinator-primary routes to one primary owner: a core Profile, a custom Profile, or bounded temporary Subagent work.
 3. The owning Profile or temporary Subagent returns a compact deliverable.
-4. Coordinator merges output, checks boundaries, and records durable state in Wiki.
+4. Default/coordinator-primary merges output, checks boundaries, and records durable state in Wiki.
 
 ## Proposal Card
 - Goal:
@@ -1633,7 +1811,7 @@ Operational takeaways:
 - Use Profile boundaries to reduce hallucination, memory pollution, and role confusion.
 - Keep project state out of `SOUL.md`, `USER.md`, `.env`, and role memory.
 - Use a shared Wiki for project progress, decisions, research material, outputs, and reusable methods.
-- A practical four-role model is coordinator, researcher, writer, and builder.
+- A practical Hermes model is default/coordinator-primary plus researcher, writer, and builder.
 """, args.force_wiki)
 
 
@@ -2112,11 +2290,11 @@ def maybe_start_gateway(args: argparse.Namespace) -> None:
     if not (args.discord_bot_token and args.discord_user_id and args.discord_channel_id):
         raise SystemExit("--start-gateway requires --discord-bot-token, --discord-user-id, and --discord-channel-id")
     if args.dry_run:
-        print("dry-run: would install/start coordinator gateway")
+        print("dry-run: would install/start default Hermes gateway")
         return
     env = command_env(args.hermes_home)
-    run(["coordinator", "gateway", "install"], env=env, check=False)
-    run(["coordinator", "gateway", "start"], env=env, check=False)
+    run(["hermes", "gateway", "install"], env=env, check=False)
+    run(["hermes", "gateway", "start"], env=env, check=False)
 
 
 def run_checks(args: argparse.Namespace, custom_specs: list[dict[str, Any]]) -> None:
@@ -2124,9 +2302,10 @@ def run_checks(args: argparse.Namespace, custom_specs: list[dict[str, Any]]) -> 
         return
     env = command_env(args.hermes_home)
     run(["hermes", "profile", "list"], env=env, check=False)
-    run(["coordinator", "gateway", "status"], env=env, check=False)
+    run(["hermes", "gateway", "status"], env=env, check=False)
     if args.run_chat_checks:
-        for profile in list(PROFILES) + [spec["name"] for spec in custom_specs]:
+        run(["hermes", "chat", "-Q", "-q", "用一句话说明你的职责边界。"], env=env, check=False)
+        for profile in list(HERMES_SPECIALIST_PROFILES) + [spec["name"] for spec in custom_specs]:
             run([profile, "chat", "-Q", "-q", "用一句话说明你的职责边界。"], env=env, check=False)
 
 
@@ -2151,7 +2330,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--custom-profile-preset", action="append", help="Built-in custom agent preset: growth-agent or secretary")
     parser.add_argument("--no-copy-auth", action="store_true", help="do not seed missing Hermes profile auth.json from the default Hermes home")
     parser.add_argument("--force-wiki", action="store_true", help="overwrite seed Wiki files")
-    parser.add_argument("--start-gateway", action="store_true", help="install and start coordinator gateway after real Discord values are supplied")
+    parser.add_argument("--start-gateway", action="store_true", help="install and start the default Hermes gateway after real Discord values are supplied")
     parser.add_argument("--run-chat-checks", action="store_true", help="spend model calls to check each role responds with its boundary")
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
@@ -2170,6 +2349,7 @@ def main() -> int:
     requested_custom_specs = load_custom_specs(args)
 
     if args.target == "hermes":
+        validate_openai_codex_oauth(args)
         create_missing_profiles(args.hermes_home, args.dry_run, [])
         custom_specs = merge_custom_registry(args.hermes_home, requested_custom_specs, args.dry_run)
         create_missing_profiles(args.hermes_home, args.dry_run, custom_specs)

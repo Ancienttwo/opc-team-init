@@ -1,6 +1,6 @@
 # Custom Peer Profiles
 
-Use this reference when the user wants specialized long-running OPC Agents beyond `coordinator`, `researcher`, `writer`, and `builder`.
+Use this reference when the user wants specialized long-running OPC Agents beyond Hermes default/coordinator-primary, `researcher`, `writer`, and `builder`.
 
 ## Interaction Rule
 
@@ -30,7 +30,7 @@ Generate one JSON object per custom agent:
   ],
   "boundaries": [
     "Do not invent metrics",
-    "Do not change product direction without coordinator approval"
+    "Do not change product direction without default/coordinator-primary approval"
   ],
   "allowed_skills": ["llm-wiki", "xitter", "blogwatcher", "ideation", "google-workspace", "obsidian"],
   "routing_triggers": ["growth", "distribution", "audience", "funnel", "twitter", "x"],
@@ -76,12 +76,12 @@ For OpenClaw, add `--target openclaw`; the same spec generates peer agent files 
 
 ## Routing
 
-Coordinator must route directly to custom agents when the user's request matches their mission or routing triggers. Custom agents are not subordinate to the core four.
+For Hermes, default/coordinator-primary must route directly to custom agents when the user's request matches their mission or routing triggers. For OpenClaw, the generated coordinator agent owns that routing. Custom agents are not subordinate to the core four.
 
 ## Discord
 
-Default policy is one Discord bot token, owned by coordinator. Custom agents are associated with distinct Discord channels by coordinator channel prompts or OpenClaw package channel routing.
+Default policy is one Discord bot token: owned by Hermes default/coordinator-primary for Hermes, and by the generated coordinator agent for OpenClaw. Custom agents are associated with distinct Discord channels by coordinator channel prompts or OpenClaw package channel routing.
 
-If a custom agent has `discord_channel_id`, the Hermes target adds that channel to coordinator's free-response channels and writes a channel prompt that routes messages to the custom Profile. The OpenClaw target writes the same mapping to `discord-channel-routing.json`, `bindings`, and, when `--discord-guild-id` is supplied, `channels.discord.guilds`.
+If a custom agent has `discord_channel_id`, the Hermes target adds that channel to default's free-response channels and writes a channel prompt that routes messages to the custom Profile. The OpenClaw target writes the same mapping to `discord-channel-routing.json`, `bindings`, and, when `--discord-guild-id` is supplied, `channels.discord.guilds`.
 
 Do not put the Discord bot token in custom agent `.env` files or generated specs.

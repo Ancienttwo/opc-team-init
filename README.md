@@ -4,10 +4,12 @@ Initialize or refresh an OPC-style multi-agent team for Hermes or OpenClaw.
 
 The default team is:
 
-- `coordinator`: goals, routing, synthesis, archive
+- default Hermes agent as `coordinator-primary`: goals, routing, synthesis, archive
 - `researcher`: evidence, verification, uncertainty
 - `writer`: structure, reader-facing content
 - `builder`: implementation, debugging, tests
+
+Only the coordinator role is implemented by rewriting/augmenting the user's default Hermes agent. All other Hermes roles, including custom agents, are created as real Profiles.
 
 It also supports user-defined peer agents such as `growth-agent` and `secretary`, shared Wiki memory, Discord proposal intake, and temporary Subagent reporting rules.
 
@@ -73,7 +75,7 @@ python3 "$HOME/.codex/skills/opc-team-init/scripts/init_opc_team.py" \
   --custom-profile-spec /path/to/custom-profiles.json
 ```
 
-Custom agents are peers, not children of the four core agents. Temporary Subagents only report to their immediate owning agent.
+Custom agents are peers, not children of the core agents. They are created as Hermes Profiles and may not use reserved names such as `default`, `coordinator`, `researcher`, `writer`, or `builder`. Temporary Subagents only report to their immediate owning agent.
 
 ## Dependencies
 
@@ -108,7 +110,7 @@ Use `--dependency-mode strict` in CI-style checks.
 
 ## Discord
 
-The default policy is one Discord bot token owned by `coordinator`.
+The Hermes default policy is one Discord bot token owned by the default/coordinator-primary agent.
 
 Hermes proposal channel:
 
@@ -134,12 +136,14 @@ Do not commit real bot tokens.
 
 Hermes writes or refreshes:
 
-- `profiles/coordinator`
+- default root `SOUL.md`, default memory, default config, and default `.env`
 - `profiles/researcher`
 - `profiles/writer`
 - `profiles/builder`
 - optional custom Profiles
 - shared Wiki files at `WIKI_PATH`
+
+If `profiles/coordinator` already exists, it is kept as a legacy backup/template and is not used as the routine Hermes routing target.
 
 OpenClaw writes a non-invasive package under:
 
@@ -178,4 +182,4 @@ If your default Python lacks `yaml`, run `quick_validate.py` from a Python envir
 
 ## Version
 
-Current skill metadata version: `0.2.1`.
+Current skill metadata version: `0.3.0`.

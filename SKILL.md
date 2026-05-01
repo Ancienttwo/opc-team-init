@@ -1,9 +1,9 @@
 ---
 name: opc-team-init
-description: Initialize or refresh an OPC agent team for Hermes or OpenClaw. Use when the user wants coordinator/researcher/writer/builder long-running agents, user-defined peer agents such as growth-agent or secretary, shared Wiki memory, Discord channel-based proposal intake, and Subagent delegation/reporting rules that conserve main-agent context.
+description: Initialize or refresh an OPC agent team for Hermes or OpenClaw. Use when the user wants the Hermes default agent to act as coordinator-primary with researcher/writer/builder peer profiles, user-defined peer agents such as growth-agent or secretary, shared Wiki memory, Discord channel-based proposal intake, and Subagent delegation/reporting rules that conserve main-agent context.
 license: MIT
 metadata:
-  version: 0.2.1
+  version: 0.3.0
 ---
 
 # OPC Team Init
@@ -12,11 +12,13 @@ metadata:
 
 Use this skill to bootstrap or refresh an OPC Agent Team for Hermes or OpenClaw:
 
-- Four long-running agents: `coordinator`, `researcher`, `writer`, `builder`.
+- Hermes: the user's own default agent becomes `coordinator-primary`; long-running peer Profiles are `researcher`, `writer`, and `builder`.
+- Only the coordinator role is implemented by rewriting/augmenting the user's default Hermes agent. `researcher`, `writer`, `builder`, and all custom agents are created and refreshed as real Hermes Profiles.
+- OpenClaw: generate explicit `coordinator`, `researcher`, `writer`, and `builder` agents in the package.
 - Optional user-defined peer agents, generated from the user's needs.
 - One user-selected shared vault with Wiki memory exposed as `WIKI_PATH`.
 - Optional GStack and GBrain dependency detection with role-based skill distribution.
-- Coordinator-owned Discord `#agent-proposals` intake.
+- Hermes default-owned Discord `#agent-proposals` intake.
 - A Subagent delegation/reporting contract so temporary agents report back to exactly one owning agent instead of bloating context.
 
 ## Quick Start
@@ -107,28 +109,31 @@ Only pass `--discord-bot-token` if the user explicitly provides the token in thi
 3. Read `references/dependencies.md` and `references/skill-distribution.md` before changing dependency or role-skill behavior.
 4. Run the script with defaults unless the user gives a different home path, vault path, Wiki path, dependency root, or Discord IDs.
 5. Ask whether to add custom peer agents. If yes, read `references/custom-profiles.md`, generate JSON spec(s), and pass them with `--custom-profile-spec` or `--custom-profile-json`.
-6. For Hermes, refresh role files, memory rules, config, `.env`, `skills.external_dirs`, and role-specific `skills.disabled` without deleting sessions or credentials.
+6. For Hermes, only the coordinator role rewrites/augments the user's default root `SOUL.md` and memory. `researcher`/`writer`/`builder` and custom peer agents must be created/refreshed as real Profiles, and `profiles/coordinator` is left as a legacy backup/template if it exists.
 7. For OpenClaw, read `references/openclaw.md`; generate an OpenClaw-compatible package under `~/.openclaw/opc-team` without mutating `.openclaw/openclaw.json`.
 8. If Discord credentials are incomplete, leave safe placeholders and do not start the gateway.
 9. If the user provides real Discord values and asks to start Hermes gateway, run with `--start-gateway`.
 10. By default, the Hermes target seeds missing profile `auth.json` from the default Hermes home so OAuth-backed models work across Profiles. Use `--no-copy-auth` only when the user wants each Profile authenticated separately.
-11. Verify Hermes with:
+11. Before relying on OpenAI Codex GPT-5.x role/model routing, verify `hermes auth list` or `hermes status` shows `openai-codex` OAuth logged in. If missing, do not configure or refresh profiles that use `provider: openai-codex`; have the user authenticate or choose another provider first.
+12. Verify Hermes with:
 
 ```bash
 hermes profile list
-coordinator gateway status
+hermes gateway status
 ```
 
 Use `--run-chat-checks` only when the user wants a live Hermes model check; it spends model calls. Verify OpenClaw by inspecting `~/.openclaw/opc-team/manifest.json`, `agents.json`, `openclaw.config.patch.json5`, and `OPENCLAW_IMPORT.md`.
 
 ## Custom Profile Model
 
-Custom Agents are peer agents, not children of the four core agents. In Hermes they are real Profiles. In OpenClaw they are generated as peer agent specs in the package. They serve specialized user needs and are registered into coordinator's routing table.
+Custom Agents are peer agents, not children of the core agents. In Hermes they are real Profiles routed by default/coordinator-primary. In OpenClaw they are generated as peer agent specs in the package. They serve specialized user needs and are registered into the routing table.
 
 - Do not require `parent_profile`.
+- Do not allow a custom Profile named `default`, `coordinator`, `researcher`, `writer`, or `builder`.
 - Let the LLM generate the custom agent from the user's description.
 - A custom agent may spawn temporary Subagents, but those Subagents report only to that custom agent.
-- Discord defaults to one bot token owned by coordinator; custom agents are associated with distinct Discord channels through coordinator channel prompts.
+- Hermes Discord defaults to one bot token owned by default/coordinator-primary; custom agents are associated with distinct Discord channels through default channel prompts.
+- OpenClaw Discord defaults to one bot token owned by the generated coordinator agent.
 
 Read `references/custom-profiles.md` before creating or changing custom agent specs.
 
@@ -153,7 +158,7 @@ Read `references/subagent-reporting.md` before changing the delegation prompt, r
 ## Safety Rules
 
 - Never write secrets into `SOUL.md`, `MEMORY.md`, Wiki files, or `config.yaml`.
-- Keep Discord bot token only in the coordinator `.env`.
+- Keep Hermes Discord bot token only in the default `.env`; do not copy it into researcher/writer/builder/custom Profile `.env` files.
 - Keep project state in the shared Wiki, not in role memory.
 - Do not delete existing Profiles, sessions, memories, or skills during refresh.
 - Do not connect researcher/writer/builder to Discord unless the user explicitly asks for separate bots and channel policy.
