@@ -2,6 +2,8 @@
 
 Use this reference when initializing or revising OPC Agent Team delegation rules for Hermes or OpenClaw.
 
+> The full Subagent Reporting Protocol page in the shared Wiki is written in the language passed via `--language en|zh-CN|zh-TW` to `init_opc_team.py`. The contract below is the canonical English source of truth used inside this skill's docs.
+
 ## When To Spawn
 
 Spawn a temporary Subagent when a task is:

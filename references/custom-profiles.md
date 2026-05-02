@@ -2,6 +2,8 @@
 
 Use this reference when the user wants specialized long-running OPC Agents beyond Hermes default/coordinator-primary, `researcher`, `writer`, and `builder`.
 
+> Custom agents inherit the global `--language` (`en` / `zh-CN` / `zh-TW`) passed to `init_opc_team.py`. Do not put a `language` field inside individual specs.
+
 ## Interaction Rule
 
 When `$opc-team-init` is activated, ask whether the user wants to add custom peer agents. If yes, collect:
@@ -45,6 +47,7 @@ Pass a list of these objects to:
 ```bash
 OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
 python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
+  --language en \
   --custom-profile-spec /path/to/custom-profiles.json
 ```
 
@@ -53,6 +56,7 @@ Or pass one object inline:
 ```bash
 OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
 python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
+  --language en \
   --custom-profile-json '{"name":"secretary","mission":"Manage briefs, follow-ups, and personal operations.","responsibilities":["Prepare daily briefs"],"boundaries":["Do not expose secrets"],"allowed_skills":["google-workspace","notion","linear","obsidian"],"routing_triggers":["schedule","brief","follow up"],"wiki_scope":"Administrative workflows and follow-up records."}'
 ```
 
