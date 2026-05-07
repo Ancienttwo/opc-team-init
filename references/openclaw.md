@@ -2,6 +2,8 @@
 
 Use this reference when the user asks for OpenClaw support.
 
+> The OpenClaw target also takes `--language en|zh-CN|zh-TW`. The chosen language is recorded in `manifest.json` and used for every prompt, role-memory seed, channel routing prompt, routing table, and Wiki seed page in the generated package. English is the source of truth.
+
 ## Policy
 
 This skill treats OpenClaw as a configuration-package target, not as an in-place config editor. The initializer must not mutate `.openclaw/openclaw.json`; it generates package files plus an `openclaw.config.patch.json5` fragment that the user can review and merge.
@@ -11,6 +13,7 @@ This skill treats OpenClaw as a configuration-package target, not as an in-place
 ```bash
 OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
 python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
+  --language en \
   --target openclaw
 ```
 
@@ -19,6 +22,7 @@ With custom agents:
 ```bash
 OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
 python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
+  --language zh-CN \
   --target openclaw \
   --custom-profile-preset growth-agent \
   --custom-profile-preset secretary
