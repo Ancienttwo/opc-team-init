@@ -15,6 +15,8 @@ import sys
 import textwrap
 from typing import Any
 
+CURRENT_DEPENDENCIES: dict[str, Any] | None = None
+
 
 PROFILES = ("coordinator", "researcher", "writer", "builder")
 HERMES_SPECIALIST_PROFILES = ("researcher", "writer", "builder")
@@ -109,6 +111,13 @@ GSTACK_HERMES_INSTALL_COMMAND = "git clone --single-branch --depth 1 https://git
 GSTACK_OPENCLAW_INSTALL_COMMAND = "git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/gstack && cd ~/gstack && ./setup --host openclaw"
 GBRAIN_AGENT_INSTALL_URL = "https://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md"
 GBRAIN_STANDALONE_INSTALL_COMMAND = "git clone https://github.com/garrytan/gbrain.git ~/gbrain && cd ~/gbrain && bun install && bun link"
+WAZA_REPO_URL = "https://github.com/tw93/Waza"
+WAZA_INSTALL_COMMAND = "npx skills add tw93/Waza -a codex -g -y"
+WAZA_SKILL_NAMES = ("think", "design", "check", "hunt", "write", "learn", "read", "health")
+WAZA_DEFAULT_ROOTS = (
+    Path.home() / ".claude" / "skills" / "waza",
+    Path.home() / ".codex" / "skills" / "waza",
+)
 
 GSTACK_SKILLS_BY_AGENT = {
     "coordinator": {
@@ -221,6 +230,13 @@ OPENCLAW_GBRAIN_SKILLS_BY_AGENT = {
     "builder": {"query"},
     "growth-agent": {"query", "ingest", "enrich"},
     "secretary": {"query", "briefing", "ingest"},
+}
+
+WAZA_SKILLS_BY_AGENT = {
+    "coordinator": {"think", "check", "health"},
+    "researcher": {"read", "learn", "hunt"},
+    "writer": {"write", "read", "learn"},
+    "builder": {"design", "hunt", "check", "think", "health"},
 }
 
 
@@ -737,6 +753,86 @@ def gbrain_openclaw_plugin_present(root: Path) -> bool:
     return (root / "openclaw.plugin.json").exists()
 
 
+def skill_name_from_file(path: Path) -> str | None:
+    match = re.search(r"^name:\s*(.+?)\s*$", path.read_text(encoding="utf-8", errors="ignore"), re.M)
+    if not match:
+        return None
+    return match.group(1).strip().strip("\"'")
+
+
+def configured_hermes_external_dirs(hermes_home: Path) -> list[Path]:
+    cfg = load_yaml(hermes_home / "config.yaml")
+    skills_cfg = cfg.get("skills") if isinstance(cfg.get("skills"), dict) else {}
+    return [Path(path).expanduser() for path in as_list(skills_cfg.get("external_dirs"))]
+
+
+def waza_candidate_roots(args: argparse.Namespace) -> list[Path]:
+    if args.waza_root_explicit:
+        return [args.waza_root]
+    return [root.expanduser() for root in WAZA_DEFAULT_ROOTS]
+
+
+def waza_candidate_skill_dirs(args: argparse.Namespace) -> list[Path]:
+    dirs: list[Path] = []
+    for root in waza_candidate_roots(args):
+        if root.name == "skills":
+            dirs.append(root)
+        else:
+            dirs.append(root / "skills")
+    return list(dict.fromkeys(path.expanduser() for path in dirs))
+
+
+def resolve_waza_bundle(root: Path) -> tuple[Path, Path] | None:
+    expanded = root.expanduser()
+    bundle_skills_dir = expanded / "skills"
+    if all((bundle_skills_dir / name / "SKILL.md").exists() for name in WAZA_SKILL_NAMES):
+        return expanded, bundle_skills_dir
+    if all((expanded / name / "SKILL.md").exists() for name in WAZA_SKILL_NAMES):
+        bundle_root = expanded.parent if expanded.name == "skills" else expanded
+        return bundle_root, expanded
+    return None
+
+
+def runtime_skill_roots(args: argparse.Namespace) -> list[Path]:
+    roots: list[Path] = []
+    if args.target == "hermes":
+        roots.append(args.hermes_home / "skills")
+        roots.extend(configured_hermes_external_dirs(args.hermes_home))
+    else:
+        roots.append(args.openclaw_home / "skills")
+    return list(dict.fromkeys(path.expanduser() for path in roots))
+
+
+def scan_named_skill_paths(roots: list[Path], names: set[str], exclude_dir: Path | None = None) -> dict[str, list[str]]:
+    hits: dict[str, list[str]] = {name: [] for name in names}
+    excluded = exclude_dir.resolve() if exclude_dir and exclude_dir.exists() else None
+    for root in roots:
+        if not root.exists():
+            continue
+        for skill_md in root.rglob("SKILL.md"):
+            if excluded is not None:
+                try:
+                    skill_md.resolve().relative_to(excluded)
+                    continue
+                except ValueError:
+                    pass
+            name = skill_name_from_file(skill_md)
+            if name in hits:
+                hits[name].append(str(skill_md.parent))
+    return {
+        name: sorted(dict.fromkeys(paths))
+        for name, paths in hits.items()
+        if paths
+    }
+
+
+def summarize_name_collisions(collisions: dict[str, list[str]]) -> str:
+    parts = []
+    for name in sorted(collisions):
+        parts.append(f"{name}: {', '.join(collisions[name])}")
+    return "; ".join(parts)
+
+
 def dependency_status(args: argparse.Namespace) -> dict[str, Any]:
     gstack_repo = gstack_repo_present(args.gstack_root)
     gstack_hermes = gstack_hermes_skills_present(args.hermes_home)
@@ -744,6 +840,22 @@ def dependency_status(args: argparse.Namespace) -> dict[str, Any]:
     gstack_openclaw = gstack_openclaw_skills_present(args.openclaw_home)
     gbrain_present = gbrain_skills_present(args.gbrain_root)
     gbrain_plugin = gbrain_openclaw_plugin_present(args.gbrain_root)
+    waza_bundle_root: Path | None = None
+    waza_skills_dir: Path | None = None
+    checked_waza_roots = waza_candidate_roots(args)
+    for root in checked_waza_roots:
+        resolved = resolve_waza_bundle(root)
+        if resolved is None:
+            continue
+        waza_bundle_root, waza_skills_dir = resolved
+        break
+    waza_name_collisions = scan_named_skill_paths(
+        runtime_skill_roots(args),
+        set(WAZA_SKILL_NAMES),
+        exclude_dir=waza_skills_dir,
+    )
+    waza_present = waza_skills_dir is not None
+    waza_active = waza_present and not waza_name_collisions
     if args.target == "openclaw":
         gstack_missing = args.gstack_root_explicit and not (gstack_repo or gstack_openclaw)
         if not args.gstack_root_explicit:
@@ -777,6 +889,17 @@ def dependency_status(args: argparse.Namespace) -> dict[str, Any]:
             "agent_install_instructions": GBRAIN_AGENT_INSTALL_URL,
             "standalone_install_command": GBRAIN_STANDALONE_INSTALL_COMMAND,
         },
+        "waza": {
+            "repo_url": WAZA_REPO_URL,
+            "root": str(waza_bundle_root or checked_waza_roots[0]),
+            "skills_dir": str(waza_skills_dir or ""),
+            "skills_present": waza_present,
+            "missing": not waza_present,
+            "name_collisions": waza_name_collisions,
+            "install_command": WAZA_INSTALL_COMMAND,
+            "active": waza_active,
+            "checked_roots": [str(path) for path in checked_waza_roots],
+        },
     }
 
 
@@ -807,6 +930,22 @@ def dependency_missing_messages(status: dict[str, Any], target: str) -> list[str
         messages.extend([
             "GBrain skills were detected, but openclaw.plugin.json was not found at the GBrain root.",
             "Use the GBrain repo root with --gbrain-root so OpenClaw can load the bundle plugin.",
+        ])
+    if status["waza"]["missing"]:
+        messages.extend([
+            "Waza dependency is missing.",
+            f"Install: {status['waza']['install_command']}",
+        ])
+        if status["waza"]["name_collisions"]:
+            messages.append(
+                "Legacy same-name skills already exist in the runtime; they are left in place and are not treated as an installed Waza bundle: "
+                + summarize_name_collisions(status["waza"]["name_collisions"])
+            )
+    elif status["waza"]["name_collisions"]:
+        messages.extend([
+            "Waza skill bundle was detected, but same-name skills already exist in the runtime.",
+            "The initializer will keep those skills in place and skip automatic Waza extraDirs: "
+            + summarize_name_collisions(status["waza"]["name_collisions"]),
         ])
     return messages
 
@@ -964,21 +1103,28 @@ def create_missing_profiles(hermes_home: Path, dry_run: bool, custom_specs: list
 
 
 def skill_distribution_for_agent(name: str, target: str = "hermes") -> dict[str, list[str]]:
+    dependencies = CURRENT_DEPENDENCIES or {}
+    waza_status = dependencies.get("waza", {})
+    waza_skills = []
+    if waza_status.get("skills_present") or waza_status.get("name_collisions"):
+        waza_skills = sorted(WAZA_SKILLS_BY_AGENT.get(name, set()))
     if target == "openclaw":
         return {
             "gstack_skills": sorted(OPENCLAW_GSTACK_SKILLS_BY_AGENT.get(name, set())),
             "gbrain_skills": sorted(OPENCLAW_GBRAIN_SKILLS_BY_AGENT.get(name, set())),
+            "waza_skills": waza_skills,
         }
     return {
         "gstack_skills": sorted(GSTACK_SKILLS_BY_AGENT.get(name, set())),
         "gbrain_skills": sorted(GBRAIN_SKILLS_BY_AGENT.get(name, set())),
+        "waza_skills": waza_skills,
     }
 
 
 def allowed_skills_for_agent(name: str, spec: dict[str, Any] | None = None, target: str = "hermes") -> set[str]:
     if target == "openclaw":
         bundle = skill_distribution_for_agent(name, target)
-        base = set(bundle["gstack_skills"] + bundle["gbrain_skills"])
+        base = set(bundle["gstack_skills"] + bundle["gbrain_skills"] + bundle["waza_skills"])
         if spec is not None:
             base.update(spec.get("openclaw_skills", []))
         return base
@@ -989,6 +1135,7 @@ def allowed_skills_for_agent(name: str, spec: dict[str, Any] | None = None, targ
     bundle = skill_distribution_for_agent(name, target)
     base.update(bundle["gstack_skills"])
     base.update(bundle["gbrain_skills"])
+    base.update(bundle["waza_skills"])
     return base
 
 
@@ -1028,6 +1175,17 @@ def dependency_notes_for_agent(name: str, status: dict[str, Any], target: str = 
             notes.append(f"GBrain skills detected at {status['gbrain']['skills_dir']}.")
         else:
             notes.append(f"GBrain missing; read {GBRAIN_AGENT_INSTALL_URL}.")
+    if WAZA_SKILLS_BY_AGENT.get(name):
+        waza_skills = ", ".join(sorted(WAZA_SKILLS_BY_AGENT[name]))
+        if status["waza"]["active"]:
+            notes.append(f"Waza skills active from {status['waza']['skills_dir']}: {waza_skills}.")
+        elif status["waza"]["name_collisions"]:
+            notes.append(
+                "Waza-style skill names are already present in the runtime; automatic Waza loading was skipped and the existing skills were kept in place: "
+                + waza_skills
+            )
+        else:
+            notes.append(f"Waza missing; install with: {WAZA_INSTALL_COMMAND}. Planned role skills: {waza_skills}.")
     return notes
 
 
@@ -1035,6 +1193,22 @@ def gbrain_external_dirs(args: argparse.Namespace) -> list[Path]:
     if args.dependencies["gbrain"]["skills_present"]:
         return [gbrain_skills_dir(args)]
     return []
+
+
+def waza_external_dirs(args: argparse.Namespace) -> list[Path]:
+    if args.dependencies["waza"]["active"] and args.dependencies["waza"]["skills_dir"]:
+        return [Path(args.dependencies["waza"]["skills_dir"])]
+    return []
+
+
+def managed_external_dir_additions(args: argparse.Namespace) -> list[Path]:
+    return gbrain_external_dirs(args) + waza_external_dirs(args)
+
+
+def managed_external_dir_removals(args: argparse.Namespace) -> list[Path]:
+    removals = [gbrain_skills_dir(args)]
+    removals.extend(waza_candidate_skill_dirs(args))
+    return list(dict.fromkeys(removals))
 
 
 def merged_external_dirs(existing: Any, additions: list[Path], removable: list[Path]) -> list[str]:
@@ -1395,12 +1569,15 @@ def refresh_default_coordinator(args: argparse.Namespace, custom_specs: list[dic
     cfg_path = args.hermes_home / "config.yaml"
     cfg = load_yaml(cfg_path)
     cfg.setdefault("skills", {})
-    external_dirs = gbrain_external_dirs(args)
+    external_dirs = managed_external_dir_additions(args)
     cfg["skills"]["external_dirs"] = merged_external_dirs(
         cfg["skills"].get("external_dirs"),
         external_dirs,
-        [gbrain_skills_dir(args)],
+        managed_external_dir_removals(args),
     )
+    skill_dirs = [args.hermes_home / "skills"] + [Path(path) for path in cfg["skills"]["external_dirs"]]
+    skills = list_skill_names(args.hermes_home, skill_dirs)
+    cfg["skills"]["disabled"] = [s for s in skills if s not in allowed_skills_for_agent("coordinator")]
     cfg.setdefault("delegation", {})
     cfg["delegation"].pop("default_toolsets", None)
     cfg.setdefault("platform_toolsets", {})
@@ -1468,11 +1645,11 @@ def refresh_profiles(args: argparse.Namespace, custom_specs: list[dict[str, Any]
         cfg_path = pdir / "config.yaml"
         cfg = load_yaml(cfg_path)
         cfg.setdefault("skills", {})
-        external_dirs = gbrain_external_dirs(args)
+        external_dirs = managed_external_dir_additions(args)
         cfg["skills"]["external_dirs"] = merged_external_dirs(
             cfg["skills"].get("external_dirs"),
             external_dirs,
-            [gbrain_skills_dir(args)],
+            managed_external_dir_removals(args),
         )
         skill_dirs = [args.hermes_home / "skills"] + [Path(path) for path in cfg["skills"]["external_dirs"]]
         skills = list_skill_names(pdir, skill_dirs)
@@ -1516,11 +1693,11 @@ def refresh_profiles(args: argparse.Namespace, custom_specs: list[dict[str, Any]
         cfg_path = pdir / "config.yaml"
         cfg = load_yaml(cfg_path)
         cfg.setdefault("skills", {})
-        external_dirs = gbrain_external_dirs(args)
+        external_dirs = managed_external_dir_additions(args)
         cfg["skills"]["external_dirs"] = merged_external_dirs(
             cfg["skills"].get("external_dirs"),
             external_dirs,
-            [gbrain_skills_dir(args)],
+            managed_external_dir_removals(args),
         )
         skill_dirs = [args.hermes_home / "skills"] + [Path(path) for path in cfg["skills"]["external_dirs"]]
         skills = list_skill_names(pdir, skill_dirs)
@@ -1854,6 +2031,8 @@ def openclaw_skill_extra_dirs(args: argparse.Namespace) -> list[str]:
         dirs.append(args.gstack_root / "openclaw" / "skills")
     if args.dependencies["gbrain"]["skills_present"]:
         dirs.append(gbrain_skills_dir(args))
+    if args.dependencies["waza"]["active"] and args.dependencies["waza"]["skills_dir"]:
+        dirs.append(Path(args.dependencies["waza"]["skills_dir"]))
     return list(dict.fromkeys(home_relative(path) for path in dirs))
 
 
@@ -2314,9 +2493,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target", choices=["hermes", "openclaw"], default="hermes", help="runtime/configuration target")
     parser.add_argument("--hermes-home", type=Path, default=Path.home() / ".hermes")
     parser.add_argument("--openclaw-home", type=Path, default=Path.home() / ".openclaw")
-    parser.add_argument("--dependency-mode", choices=["prompt", "strict", "off"], default="prompt", help="how to handle missing GStack/GBrain dependencies")
+    parser.add_argument("--dependency-mode", choices=["prompt", "strict", "off"], default="prompt", help="how to handle missing GStack/GBrain/Waza dependencies")
     parser.add_argument("--gstack-root", type=Path, help="GStack checkout root; defaults to ~/gstack")
     parser.add_argument("--gbrain-root", type=Path, help="GBrain checkout root; defaults to ~/gbrain")
+    parser.add_argument("--waza-root", type=Path, help="Waza bundle root or skills dir; defaults to ~/.claude/skills/waza then ~/.codex/skills/waza")
     parser.add_argument("--wiki-path", type=Path, help="absolute shared Wiki path; overrides vault selection")
     parser.add_argument("--vault-path", type=Path, help="shared vault root used with --wiki-folder-name")
     parser.add_argument("--wiki-folder-name", default=DEFAULT_WIKI_FOLDER_NAME, help="relative folder inside the selected vault; default '.' means the vault root")
@@ -2337,15 +2517,19 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    global CURRENT_DEPENDENCIES
     args = parse_args()
     args.hermes_home = args.hermes_home.expanduser()
     args.openclaw_home = args.openclaw_home.expanduser()
     args.gstack_root_explicit = args.gstack_root is not None
     args.gbrain_root_explicit = args.gbrain_root is not None
+    args.waza_root_explicit = args.waza_root is not None
     args.gstack_root = (args.gstack_root or Path.home() / "gstack").expanduser()
     args.gbrain_root = (args.gbrain_root or Path.home() / "gbrain").expanduser()
+    args.waza_root = args.waza_root.expanduser() if args.waza_root is not None else None
     args.wiki_path = resolve_wiki_path(args)
     args.dependencies = check_dependencies(args)
+    CURRENT_DEPENDENCIES = args.dependencies
     requested_custom_specs = load_custom_specs(args)
 
     if args.target == "hermes":

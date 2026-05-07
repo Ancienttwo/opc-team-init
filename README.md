@@ -11,7 +11,7 @@ The default team is:
 
 Only the coordinator role is implemented by rewriting/augmenting the user's default Hermes agent. All other Hermes roles, including custom agents, are created as real Profiles.
 
-It also supports user-defined peer agents such as `growth-agent` and `secretary`, shared Wiki memory, Discord proposal intake, and temporary Subagent reporting rules.
+It also supports user-defined peer agents such as `growth-agent` and `secretary`, shared Wiki memory, Discord proposal intake, temporary Subagent reporting rules, and role-scoped Waza passive skill exposure.
 
 ## Install
 
@@ -79,7 +79,7 @@ Custom agents are peers, not children of the core agents. They are created as He
 
 ## Dependencies
 
-GStack and GBrain are detected, not installed automatically.
+GStack, GBrain, and Waza are detected, not installed automatically.
 
 Hermes GStack setup:
 
@@ -97,6 +97,19 @@ GBrain agent install guide:
 
 ```text
 https://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md
+```
+
+Waza install:
+
+```bash
+npx skills add tw93/Waza -a codex -g -y
+```
+
+Optional explicit Waza root:
+
+```bash
+python3 "$HOME/.codex/skills/opc-team-init/scripts/init_opc_team.py" \
+  --waza-root "$HOME/.claude/skills/waza"
 ```
 
 Dependency mode:
@@ -174,12 +187,11 @@ python3 -m py_compile \
 Skill validation:
 
 ```bash
-python3 "$HOME/.codex/skills/.system/skill-creator/scripts/quick_validate.py" \
+/Users/chris/.hermes/hermes-agent/venv/bin/python \
+  "$HOME/.codex/skills/skill-writer/scripts/quick_validate.py" \
   "$HOME/.codex/skills/opc-team-init"
 ```
 
-If your default Python lacks `yaml`, run `quick_validate.py` from a Python environment with PyYAML installed.
-
 ## Version
 
-Current skill metadata version: `0.3.0`.
+Current skill metadata version: `0.4.0`.

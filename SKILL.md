@@ -3,7 +3,7 @@ name: opc-team-init
 description: Initialize or refresh an OPC agent team for Hermes or OpenClaw. Use when the user wants the Hermes default agent to act as coordinator-primary with researcher/writer/builder peer profiles, user-defined peer agents such as growth-agent or secretary, shared Wiki memory, Discord channel-based proposal intake, and Subagent delegation/reporting rules that conserve main-agent context.
 license: MIT
 metadata:
-  version: 0.3.0
+  version: 0.4.0
 ---
 
 # OPC Team Init
@@ -17,7 +17,7 @@ Use this skill to bootstrap or refresh an OPC Agent Team for Hermes or OpenClaw:
 - OpenClaw: generate explicit `coordinator`, `researcher`, `writer`, and `builder` agents in the package.
 - Optional user-defined peer agents, generated from the user's needs.
 - One user-selected shared vault with Wiki memory exposed as `WIKI_PATH`.
-- Optional GStack and GBrain dependency detection with role-based skill distribution.
+- Optional GStack, GBrain, and Waza dependency detection with role-based skill distribution.
 - Hermes default-owned Discord `#agent-proposals` intake.
 - A Subagent delegation/reporting contract so temporary agents report back to exactly one owning agent instead of bloating context.
 
@@ -66,12 +66,20 @@ python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --discord-channel-id 123456789012345678
 ```
 
-Dependency checks default to prompt-only. The initializer never installs GStack or GBrain automatically:
+Dependency checks default to prompt-only. The initializer never installs GStack, GBrain, or Waza automatically:
 
 ```bash
 OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
 python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --dependency-mode prompt
+```
+
+To point at an explicit Waza bundle root or direct `skills/` directory:
+
+```bash
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
+  --waza-root "$HOME/.claude/skills/waza"
 ```
 
 With real Discord values:
@@ -139,13 +147,16 @@ Read `references/custom-profiles.md` before creating or changing custom agent sp
 
 ## Dependency Model
 
-GStack and GBrain are external MIT dependencies. Do not vendor or copy either project into this skill. The initializer detects them and distributes their skills by role.
+GStack, GBrain, and Waza are external dependencies. Do not vendor or copy any of them into this skill. The initializer detects them and distributes their skills by role.
 
 - GStack missing: print the target-specific setup command, `./setup --host hermes` for Hermes and `./setup --host openclaw` for OpenClaw.
 - GBrain missing: print the agent install guide at `https://raw.githubusercontent.com/garrytan/gbrain/master/INSTALL_FOR_AGENTS.md`.
-- Hermes: GStack skills are expected under `~/.hermes/skills/gstack*`; GBrain skills are added through `skills.external_dirs`.
-- OpenClaw: GStack skills are expected under `~/.openclaw/skills/gstack` or `~/gstack/openclaw/skills`; GBrain can be loaded from `~/gbrain/openclaw.plugin.json` plus `~/gbrain/skills`.
-- OpenClaw: dependency state, real OpenClaw skill IDs, per-agent directories, workspaces, `bindings`, `skills.load.extraDirs`, and `channels.discord` are written into the generated package and config patch.
+- Waza missing: print `npx skills add tw93/Waza -a codex -g -y`.
+- Waza source-of-truth: only an explicit Waza bundle counts as the dependency. Same-name legacy skills are left in place, warned about, and never overwritten automatically.
+- Hermes: GStack skills are expected under `~/.hermes/skills/gstack*`; GBrain skills are added through `skills.external_dirs`; Waza is added through `skills.external_dirs` only when the bundle is present and no same-name runtime collisions exist.
+- Hermes: Waza passive skill exposure is limited to the core four roles. Custom peer agents do not inherit Waza automatically in this version.
+- OpenClaw: GStack skills are expected under `~/.openclaw/skills/gstack` or `~/gstack/openclaw/skills`; GBrain can be loaded from `~/gbrain/openclaw.plugin.json` plus `~/gbrain/skills`; Waza can be loaded from a detected external `skills/` directory.
+- OpenClaw: dependency state, real OpenClaw skill IDs, Waza skill names, per-agent directories, workspaces, `bindings`, `skills.load.extraDirs`, and `channels.discord` are written into the generated package and config patch.
 
 Read `references/dependencies.md` and `references/skill-distribution.md` before changing this behavior.
 

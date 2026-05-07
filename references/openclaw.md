@@ -35,7 +35,7 @@ The OpenClaw target writes a non-secret package under:
 Expected files:
 
 - `manifest.json`: package metadata and compatibility mode.
-- `dependencies.json`: detected GStack/GBrain dependency state and install hints.
+- `dependencies.json`: detected GStack/GBrain/Waza dependency state and install hints.
 - `agent-skill-map.json`: role-based OpenClaw skill distribution matrix.
 - `agents.json`: structured registry for core and custom peer agents.
 - `agents/*.md`: prompt and role-memory seeds.
@@ -65,7 +65,7 @@ When `--discord-guild-id` is also supplied, the config patch adds `channels.disc
 
 ## Skills
 
-Do not reuse Hermes skill IDs for OpenClaw. Use the OpenClaw-native GStack IDs:
+Do not reuse Hermes skill IDs for OpenClaw GStack routing. Use the OpenClaw-native GStack IDs:
 
 - `gstack-openclaw-office-hours`
 - `gstack-openclaw-ceo-review`
@@ -74,7 +74,15 @@ Do not reuse Hermes skill IDs for OpenClaw. Use the OpenClaw-native GStack IDs:
 
 Use only the GBrain OpenClaw plugin skill IDs that the plugin declares: `ingest`, `query`, `maintain`, `enrich`, `briefing`, `migrate`, and `setup`.
 
+Waza keeps its upstream plain skill names: `think`, `design`, `check`, `hunt`, `write`, `learn`, `read`, and `health`.
+
+- Waza is loaded only from an external Waza bundle directory in `skills.load.extraDirs`.
+- Automatic Waza loading happens only when the full bundle is detected and no same-name runtime collisions exist.
+- Same-name legacy skills are warned about and left in place; the package does not delete them or force Waza to override them.
+
 The OpenClaw target writes these into `agents.list[].skills`, `skills.entries`, `agent-skill-map.json`, and `agents.json`.
+
+Passive triggering means the role can expose those skill names to the runtime when the request matches. It does not imply automatic skill-to-skill chaining.
 
 ## Subagents
 
