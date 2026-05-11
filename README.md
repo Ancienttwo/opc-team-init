@@ -25,6 +25,37 @@ $HOME/.codex/skills/opc-team-init
 
 The skill is MIT licensed. See [LICENSE](LICENSE).
 
+Install from GitHub:
+
+```bash
+git clone --depth 1 https://github.com/Ancienttwo/opc-team-init.git \
+  "$HOME/.codex/skills/opc-team-init"
+```
+
+Codex skill installation only copies the skill and requires a restart. There is no reliable post-install hook, so configuration is an explicit setup step.
+
+Install-or-reuse and configure from a team spec:
+
+```bash
+python3 "$HOME/.codex/skills/opc-team-init/scripts/opc_team_setup.py" install-configure \
+  --team-spec /path/to/opc-team.json
+```
+
+Configure an already installed skill:
+
+```bash
+python3 "$HOME/.codex/skills/opc-team-init/scripts/opc_team_setup.py" configure \
+  --team-spec /path/to/opc-team.json
+```
+
+fsSL-style bootstrap wrapper:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Ancienttwo/opc-team-init/main/scripts/install_configure.sh \
+  | OPC_TEAM_INIT_REPO_URL=https://github.com/Ancienttwo/opc-team-init.git \
+    bash -s -- --team-spec /path/to/opc-team.json
+```
+
 ## Quick Start
 
 Hermes target:
@@ -66,6 +97,8 @@ python3 "$HOME/.codex/skills/opc-team-init/scripts/init_opc_team.py" \
   --wiki-path "/absolute/path/to/vault"
 ```
 
+Natural-language team setup should first be converted into a JSON team spec. See [references/team-config.md](references/team-config.md). The setup wrapper runs Hermes audit before writes and then calls the source-of-truth initializer.
+
 ## Languages
 
 `--language en|zh-CN|zh-TW` controls which copy is written into:
@@ -98,6 +131,7 @@ The audit reports:
 - Per-profile SOUL/MEMORY status: `clean`, `drift` (managed block edited), `legacy` (no managed block — pre-v0.4 file or pure manual content), or `missing`.
 - Lines of manual content sitting outside each managed block (preserved across reruns).
 - Discord `channel_prompts` coverage vs the registered custom profiles.
+- `OPC_CHANNELS.json` coverage vs `discord.channel_prompts`.
 - Custom registry vs profile directory consistency.
 - Wiki path validity.
 - Multi-gateway LaunchAgents in `~/Library/LaunchAgents/com.hermes.gateway*.plist`.
@@ -172,6 +206,8 @@ Use `--dependency-mode strict` in CI-style checks.
 
 Hermes does not allow two gateways to share a Discord bot token; a second `hermes gateway start` with the same token will fail. The default mode is therefore **single-gateway**: only the default coordinator gateway connects to Discord, and per-channel role behavior is driven by `discord.channel_prompts` in `~/.hermes/config.yaml`. Specialist and custom Profiles never start their own gateway by default.
 
+Only the default/coordinator home channel is written to `discord.free_response_channels`; it can work as an always-open Orchestrator channel. Researcher, writer, builder, and custom agent channels are written to `discord.channel_prompts` only, so they still require an `@mention` and auto-create a thread.
+
 Hermes proposal channel:
 
 ```bash
@@ -179,6 +215,20 @@ python3 "$HOME/.codex/skills/opc-team-init/scripts/init_opc_team.py" \
   --language en \
   --discord-channel-id 123456789012345678 \
   --discord-user-id 234567890123456789
+```
+
+Hermes one-bot multi-channel routing:
+
+```bash
+python3 "$HOME/.codex/skills/opc-team-init/scripts/init_opc_team.py" \
+  --language zh-CN \
+  --discord-channel-id 100000000000000001 \
+  --agent-channel researcher=100000000000000002 \
+  --agent-channel writer=100000000000000003 \
+  --agent-channel builder=100000000000000004 \
+  --agent-channel secretary=100000000000000005 \
+  --agent-channel-name secretary=#secretary \
+  --custom-profile-preset secretary
 ```
 
 OpenClaw channel routing:
@@ -253,4 +303,4 @@ Skill validation:
 
 ## Version
 
-Current skill metadata version: `0.4.0`.
+Current skill metadata version: `0.5.1`.

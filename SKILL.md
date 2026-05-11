@@ -1,9 +1,9 @@
 ---
 name: opc-team-init
-description: Initialize, refresh, or audit an OPC agent team for Hermes or OpenClaw. Use this skill whenever the user wants to set up or rework Hermes profiles (default coordinator + researcher/writer/builder + custom peers like growth-agent or secretary), wire shared Wiki memory at WIKI_PATH, configure Discord channel routing through one bot token, debug why a Hermes gateway stopped working, diagnose drift in existing ~/.hermes profiles, or write profile content in English / Simplified Chinese / Traditional Chinese — even if they phrase it as "set up agent team", "refresh my profiles", "build an OPC team", "fix Discord gateway", "audit my Hermes setup", or similar. English is the source of truth for all multilingual content.
+description: Initialize, refresh, or audit an OPC agent team for Hermes or OpenClaw. Use to handle requests like "set up agent team", "refresh my profiles", "build an OPC team", "install and configure OPC", "fix Discord gateway", "audit my Hermes setup", or similar. Covers Hermes profiles (default coordinator + researcher/writer/builder + custom peers like growth-agent or secretary), shared Wiki memory at WIKI_PATH, one-token Discord channel routing, gateway drift, and English / Simplified Chinese / Traditional Chinese profile content. English is the source of truth for all multilingual content.
 license: MIT
 metadata:
-  version: 0.4.0
+  version: 0.5.1
 ---
 
 # OPC Team Init
@@ -19,19 +19,47 @@ Use this skill to bootstrap or refresh an OPC Agent Team for Hermes or OpenClaw:
 - One user-selected shared vault with Wiki memory exposed as `WIKI_PATH`.
 - Optional GStack, GBrain, and Waza dependency detection with role-based skill distribution.
 - Hermes default-owned Discord `#agent-proposals` intake.
+- A setup wrapper for install + configure flows. Codex skill installation has no reliable post-install hook, so setup is explicit through `scripts/opc_team_setup.py` or the fsSL-friendly `scripts/install_configure.sh`.
+- Channel routing from a reusable team spec: the default/coordinator home channel is free-response; researcher, writer, builder, and custom Profile channels require mention and use auto-threading.
 - A Subagent delegation/reporting contract so temporary agents report back to exactly one owning agent instead of bloating context.
 - Three-language profile content: `--language en|zh-CN|zh-TW` (required for `--mode init`). English is the source of truth; the others are translations.
-- Read-only audit (`--mode audit`) reports drift, missing profiles, residual multi-gateway LaunchAgents, and Discord channel-prompt coverage.
+- Read-only audit (`--mode audit`) reports drift, missing profiles, residual multi-gateway LaunchAgents, and Discord channel-prompt coverage. Generated channel source-of-truth lives in `OPC_CHANNELS.json`.
 - Specialist and custom Profile SOUL.md and MEMORY.md are written inside `<!-- BEGIN OPC MANAGED ... -->` ... `<!-- END OPC MANAGED ... -->` blocks; manual content outside the block is preserved across reruns. Pre-write snapshots land in `~/.hermes/.opc-backups/<timestamp>/` (last 10 retained).
 
 ## Quick Start
 
 When this skill is invoked:
 
-1. Confirm the **target language** for profile and Wiki content (`en` / `zh-CN` / `zh-TW`). Infer from the user's current message language as a hint, but always confirm. English is the source of truth.
-2. Ask where the shared vault should live.
-3. Ask whether the user wants to add custom peer agents. If yes, collect a short description for each and generate a spec using `references/custom-profiles.md`.
-4. For installs that already exist, run `--mode audit` first (see Audit section) before any write.
+1. Prefer the setup wrapper when the user describes agent roles, channels, or shared vaults in natural language. Read `references/team-config.md`, convert the request into a JSON team spec, then run `scripts/opc_team_setup.py configure --team-spec <spec>`.
+2. If the user asks for install + configure, run `scripts/opc_team_setup.py install-configure --team-spec <spec>`. Use the shell wrapper only for fsSL-style bootstrap.
+3. For installs that already exist, keep the setup wrapper's audit-first behavior. It runs `--mode audit` before writes and refuses severe multi-gateway risk unless explicitly overridden.
+4. For low-level direct refreshes, use `scripts/init_opc_team.py` as the source-of-truth engine.
+
+There is no reliable Codex post-install lifecycle hook. Do not promise automatic configuration immediately after skill installation; provide an explicit setup command instead.
+
+Setup from an installed skill:
+
+```bash
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/opc_team_setup.py" configure \
+  --team-spec /path/to/opc-team.json
+```
+
+Install or reuse the skill, then configure:
+
+```bash
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/opc_team_setup.py" install-configure \
+  --team-spec /path/to/opc-team.json
+```
+
+fsSL-style bootstrap:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Ancienttwo/opc-team-init/main/scripts/install_configure.sh \
+  | OPC_TEAM_INIT_REPO_URL=https://github.com/Ancienttwo/opc-team-init.git \
+    bash -s -- --team-spec /path/to/opc-team.json
+```
 
 Run the initializer script from this skill. The default location can be overridden if the skill is installed somewhere else:
 
@@ -108,6 +136,20 @@ python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
   --discord-user-id 234567890123456789
 ```
 
+With one-bot multi-channel routing, only `--discord-channel-id` is free-response. Other `--agent-channel` routes require mention and auto-thread:
+
+```bash
+OPC_TEAM_INIT_DIR="${OPC_TEAM_INIT_DIR:-$HOME/.codex/skills/opc-team-init}"
+python3 "$OPC_TEAM_INIT_DIR/scripts/init_opc_team.py" \
+  --language zh-CN \
+  --discord-channel-id 100000000000000001 \
+  --agent-channel researcher=100000000000000002 \
+  --agent-channel writer=100000000000000003 \
+  --agent-channel builder=100000000000000004 \
+  --agent-channel secretary=100000000000000005 \
+  --custom-profile-preset secretary
+```
+
 With built-in example custom agents:
 
 ```bash
@@ -156,17 +198,18 @@ The audit reports:
 2. If `~/.hermes/profiles/` already exists, run `--mode audit` first and show the user any `drift`, `legacy`, or LaunchAgent warnings before any write. `legacy` files will get a managed block appended on the next write; manual content outside the block is preserved.
 3. Choose target: default to `--target hermes`; use `--target openclaw` when the user asks for OpenClaw.
 4. Default the shared vault to `~/Documents/vault`. If the user wants a different place, read `references/shared-vault.md`, then use `--select-vault` for an interactive terminal choice, `--vault-path` for a chosen vault root, or `--wiki-path` only when the user wants an exact absolute Wiki directory.
-5. Read `references/dependencies.md` and `references/skill-distribution.md` before changing dependency or role-skill behavior.
-6. Run the script with defaults unless the user gives a different home path, vault path, Wiki path, dependency root, or Discord IDs.
-7. Ask whether to add custom peer agents. If yes, read `references/custom-profiles.md`, generate JSON spec(s), and pass them with `--custom-profile-spec` or `--custom-profile-json`.
-8. For Hermes, only the coordinator role rewrites/augments the user's default root `SOUL.md` and memory through a managed block. `researcher`/`writer`/`builder` and custom peer agents are refreshed in place inside their own per-profile managed blocks; `profiles/coordinator` is left as a legacy backup/template if it exists.
-9. For OpenClaw, read `references/openclaw.md`; generate an OpenClaw-compatible package under `~/.openclaw/opc-team` without mutating `.openclaw/openclaw.json`.
-10. If Discord credentials are incomplete, leave safe placeholders and do not start the gateway.
-11. **Default to single-gateway mode.** Hermes does not allow two gateways to share a Discord bot token. The default coordinator gateway also receives `discord.channel_prompts` for every specialist + custom Profile; researcher/writer/builder gateways are not started. Only pass `--multi-gateway` when each profile already has its own `DISCORD_BOT_TOKEN` in `profiles/<name>/.env`; the script will refuse otherwise.
-12. If the user provides real Discord values and asks to start Hermes gateway, run with `--start-gateway`.
-13. By default, the Hermes target seeds missing profile `auth.json` from the default Hermes home so OAuth-backed models work across Profiles. Use `--no-copy-auth` only when the user wants each Profile authenticated separately.
-14. Before relying on OpenAI Codex GPT-5.x role/model routing, verify `hermes auth list` or `hermes status` shows `openai-codex` OAuth logged in. If missing, do not configure or refresh profiles that use `provider: openai-codex`; have the user authenticate or choose another provider first.
-15. Verify Hermes with:
+5. For natural-language team setup, read `references/team-config.md` and generate one JSON team spec rather than manually composing many CLI flags.
+6. Read `references/dependencies.md` and `references/skill-distribution.md` before changing dependency or role-skill behavior.
+7. Run the script with defaults unless the user gives a different home path, vault path, Wiki path, dependency root, or Discord IDs.
+8. Ask whether to add custom peer agents. If yes, read `references/custom-profiles.md`, generate JSON spec(s), and pass them with `--custom-profile-spec` or `--custom-profile-json`.
+9. For Hermes, only the coordinator role rewrites/augments the user's default root `SOUL.md` and memory through a managed block. `researcher`/`writer`/`builder` and custom peer agents are refreshed in place inside their own per-profile managed blocks; `profiles/coordinator` is left as a legacy backup/template if it exists.
+10. For OpenClaw, read `references/openclaw.md`; generate an OpenClaw-compatible package under `~/.openclaw/opc-team` without mutating `.openclaw/openclaw.json`.
+11. If Discord credentials are incomplete, leave safe placeholders and do not start the gateway.
+12. **Default to single-gateway mode.** Hermes does not allow two gateways to share a Discord bot token. The default coordinator gateway also receives `discord.channel_prompts` for every specialist + custom Profile; researcher/writer/builder gateways are not started. Only pass `--multi-gateway` when each profile already has its own `DISCORD_BOT_TOKEN` in `profiles/<name>/.env`; the script will refuse otherwise.
+13. If the user provides real Discord values and asks to start Hermes gateway, run with `--start-gateway`.
+14. By default, the Hermes target seeds missing profile `auth.json` from the default Hermes home so OAuth-backed models work across Profiles. Use `--no-copy-auth` only when the user wants each Profile authenticated separately.
+15. Before relying on OpenAI Codex GPT-5.x role/model routing, verify `hermes auth list` or `hermes status` shows `openai-codex` OAuth logged in. If missing, do not configure or refresh profiles that use `provider: openai-codex`; have the user authenticate or choose another provider first.
+16. Verify Hermes with:
 
 ```bash
 hermes profile list
@@ -223,6 +266,7 @@ Read `references/subagent-reporting.md` before changing the delegation prompt, r
 - Never write secrets into `SOUL.md`, `MEMORY.md`, Wiki files, or `config.yaml`.
 - Keep Hermes Discord bot token only in the default `.env`; do not copy it into researcher/writer/builder/custom Profile `.env` files. The exception is `--multi-gateway` mode, which requires a unique token per profile in each `profiles/<name>/.env`.
 - A single Hermes gateway holds the Discord bot token; starting a second gateway with the same token will fail. Default to single-gateway mode and use `discord.channel_prompts` to route per-channel role behavior.
+- Only the default/coordinator home channel should be listed in `discord.free_response_channels`. Specialist and custom channels should have `channel_prompts` but stay mention-required so Hermes can auto-create threads.
 - Keep project state in the shared Wiki, not in role memory.
 - Do not delete existing Profiles, sessions, memories, or skills during refresh.
 - Do not connect researcher/writer/builder to Discord unless the user explicitly asks for separate bots and channel policy.

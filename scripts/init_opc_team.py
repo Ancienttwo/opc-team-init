@@ -24,6 +24,7 @@ HERMES_SPECIALIST_PROFILES = ("researcher", "writer", "builder")
 RESERVED_CUSTOM_PROFILE_NAMES = set(PROFILES) | {"default"}
 PLACEHOLDER_CHANNEL = "<AGENT_PROPOSALS_CHANNEL_ID>"
 CUSTOM_REGISTRY_NAME = "OPC_CUSTOM_PROFILES.json"
+CHANNEL_REGISTRY_NAME = "OPC_CHANNELS.json"
 ROUTING_TABLE_NAME = "OPC_ROUTING_TABLE.md"
 OPENCLAW_PACKAGE_DIRNAME = "opc-team"
 DEFAULT_WIKI_FOLDER_NAME = "."
@@ -1361,6 +1362,10 @@ def registry_path(hermes_home: Path) -> Path:
     return hermes_home / CUSTOM_REGISTRY_NAME
 
 
+def channel_registry_path(hermes_home: Path) -> Path:
+    return hermes_home / CHANNEL_REGISTRY_NAME
+
+
 def routing_table_path(hermes_home: Path) -> Path:
     return hermes_home / ROUTING_TABLE_NAME
 
@@ -1708,6 +1713,117 @@ def read_custom_registry_file(path: Path) -> list[dict[str, Any]]:
     if not isinstance(data, list):
         raise SystemExit(f"{path} must contain a JSON list")
     return [normalize_custom_spec(item) for item in data]
+
+
+def normalize_channel_profile(profile: str) -> str:
+    name = profile.strip().lower()
+    if name in {"orchestrator", "coordinator-primary"}:
+        return "default"
+    if name == "coordinator":
+        return "default"
+    if not PROFILE_NAME_RE.match(name):
+        raise SystemExit(f"Invalid channel profile name: {profile!r}")
+    return name
+
+
+def parse_mapping_items(items: list[str] | None, label: str) -> dict[str, str]:
+    parsed: dict[str, str] = {}
+    for item in items or []:
+        if "=" not in item:
+            raise SystemExit(f"{label} must use profile=value format: {item!r}")
+        profile, value = item.split("=", 1)
+        profile = normalize_channel_profile(profile)
+        value = value.strip()
+        if not value:
+            raise SystemExit(f"{label} has empty value for profile {profile!r}")
+        parsed[profile] = value
+    return parsed
+
+
+def read_channel_registry_file(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise SystemExit(f"{path} must contain a JSON list")
+    records: list[dict[str, Any]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            raise SystemExit(f"{path} contains a non-object channel entry")
+        profile = normalize_channel_profile(str(item.get("profile") or ""))
+        channel_id = str(item.get("channel_id") or "").strip()
+        if not channel_id:
+            continue
+        records.append({
+            "profile": profile,
+            "channel_name": str(item.get("channel_name") or f"#{profile}").strip(),
+            "channel_id": channel_id,
+            "free_response": bool(item.get("free_response", False)),
+            "kind": str(item.get("kind") or "profile"),
+        })
+    return records
+
+
+def build_channel_registry(
+    args: argparse.Namespace,
+    custom_specs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    ids = parse_mapping_items(args.agent_channel or [], "--agent-channel")
+    names = parse_mapping_items(args.agent_channel_name or [], "--agent-channel-name")
+    records: dict[str, dict[str, Any]] = {}
+
+    def add(profile: str, channel_id: str, channel_name: str, *, free_response: bool, kind: str) -> None:
+        normalized = normalize_channel_profile(profile)
+        if not channel_id:
+            return
+        records[normalized] = {
+            "profile": normalized,
+            "channel_name": channel_name or f"#{normalized}",
+            "channel_id": channel_id,
+            "free_response": free_response,
+            "kind": kind,
+        }
+
+    if args.discord_channel_id:
+        add(
+            "default",
+            args.discord_channel_id,
+            names.get("default", "#agent-proposals"),
+            free_response=True,
+            kind="home",
+        )
+    for profile in HERMES_SPECIALIST_PROFILES:
+        add(
+            profile,
+            ids.get(profile, ""),
+            names.get(profile, f"#{profile}"),
+            free_response=False,
+            kind="core",
+        )
+    for spec in custom_specs:
+        profile = spec["name"]
+        channel_id = ids.get(profile) or spec.get("discord_channel_id") or ""
+        channel_name = names.get(profile) or spec.get("discord_channel_name") or f"#{profile}"
+        add(profile, channel_id, channel_name, free_response=False, kind="custom")
+    return [records[name] for name in sorted(records)]
+
+
+def apply_channel_overrides_to_custom_specs(
+    specs: list[dict[str, Any]],
+    args: argparse.Namespace,
+) -> list[dict[str, Any]]:
+    ids = parse_mapping_items(args.agent_channel or [], "--agent-channel")
+    names = parse_mapping_items(args.agent_channel_name or [], "--agent-channel-name")
+    updated: list[dict[str, Any]] = []
+    for spec in specs:
+        record = dict(spec)
+        profile = record["name"]
+        if profile in ids:
+            record["discord_channel_id"] = ids[profile]
+        if profile in names:
+            record["discord_channel_name"] = names[profile]
+        updated.append(record)
+    return updated
 
 
 def merge_custom_registry(hermes_home: Path, new_specs: list[dict[str, Any]], dry_run: bool) -> list[dict[str, Any]]:
@@ -2103,6 +2219,7 @@ OPC_BACKUP_RELATIVE_PATHS = (
     "config.yaml",
     ROUTING_TABLE_NAME,
     CUSTOM_REGISTRY_NAME,
+    CHANNEL_REGISTRY_NAME,
     "DISCORD_AGENT_PROPOSALS_SETUP.md",
 )
 
@@ -2381,6 +2498,40 @@ Routing triggers: {triggers}
     raise KeyError(f"unsupported language: {lang!r}")
 
 
+def core_channel_prompt(profile: str, lang: str) -> str:
+    target = "default" if profile in {"default", "coordinator"} else profile
+    summary_key = "coordinator" if target == "default" else target
+    summary = t(CORE_PROFILE_SUMMARY, summary_key, lang)
+    if lang == "en":
+        return f"""\
+This Discord channel belongs to Hermes Profile `{target}`.
+Use the single default/coordinator-primary owned Discord bot token, but route this channel's work to `{target}`.
+Require direct mention in the channel; when auto-threading is enabled, new mentioned work should open a thread.
+Profile boundary: {summary}
+Temporary Subagents spawned for this channel report only to `{target}`.
+Do not write project state into profile memory; write durable state to the shared Wiki when tools are available.
+"""
+    if lang == "zh-CN":
+        return f"""\
+此 Discord 频道属于 Hermes Profile `{target}`。
+继续使用 default/coordinator-primary 持有的唯一 Discord bot token，但把此频道的工作路由给 `{target}`。
+频道内需要直接 mention；启用 auto-thread 时，新的 mention 工作应该开 thread。
+Profile 边界：{summary}
+为此频道 spawn 的临时 Subagent 只回报给 `{target}`。
+不要把项目状态写入 profile memory；如果工具可用，把长期状态写入共享 Wiki。
+"""
+    if lang == "zh-TW":
+        return f"""\
+此 Discord 頻道屬於 Hermes Profile `{target}`。
+繼續使用 default/coordinator-primary 持有的唯一 Discord bot token，但把此頻道的工作路由給 `{target}`。
+頻道內需要直接 mention；啟用 auto-thread 時，新的 mention 工作應該開 thread。
+Profile 邊界：{summary}
+為此頻道 spawn 的臨時 Subagent 只回報給 `{target}`。
+不要把專案狀態寫入 profile memory；若工具可用，把長期狀態寫入共享 Wiki。
+"""
+    raise KeyError(f"unsupported language: {lang!r}")
+
+
 def seed_auth_if_missing(hermes_home: Path, pdir: Path, no_copy_auth: bool) -> None:
     if no_copy_auth:
         return
@@ -2553,16 +2704,28 @@ def coordinator_discord_config(
     custom_specs: list[dict[str, Any]],
     lang: str,
 ) -> tuple[str, dict[str, str]]:
+    channel_records = getattr(args, "channel_registry", None) or build_channel_registry(args, custom_specs)
     base_channel = args.discord_channel_id or PLACEHOLDER_CHANNEL
-    prompts = {base_channel: textwrap.dedent(DISCORD_PROMPT[lang]).strip()}
+    prompts: dict[str, str] = {}
     free_channels: list[str] = []
-    if args.discord_channel_id:
-        free_channels.append(args.discord_channel_id)
-    for spec in custom_specs:
-        channel_id = spec.get("discord_channel_id") or ""
-        if channel_id:
+    custom_by_name = {spec["name"]: spec for spec in custom_specs}
+    for record in channel_records:
+        channel_id = str(record.get("channel_id") or "").strip()
+        if not channel_id:
+            continue
+        profile = str(record.get("profile") or "")
+        if record.get("free_response"):
             free_channels.append(channel_id)
-            prompts[channel_id] = textwrap.dedent(custom_channel_prompt(spec, lang)).strip()
+            prompts[channel_id] = textwrap.dedent(DISCORD_PROMPT[lang]).strip()
+        elif profile in custom_by_name:
+            prompts[channel_id] = textwrap.dedent(custom_channel_prompt(custom_by_name[profile], lang)).strip()
+        else:
+            prompts[channel_id] = textwrap.dedent(core_channel_prompt(profile, lang)).strip()
+    if args.discord_channel_id and args.discord_channel_id not in prompts:
+        prompts[args.discord_channel_id] = textwrap.dedent(DISCORD_PROMPT[lang]).strip()
+        free_channels.append(args.discord_channel_id)
+    if not prompts:
+        prompts[base_channel] = textwrap.dedent(DISCORD_PROMPT[lang]).strip()
     free_response = ",".join(dict.fromkeys(free_channels)) if free_channels else base_channel
     return free_response, prompts
 
@@ -2609,7 +2772,8 @@ def refresh_default_coordinator(
     if "delegation" not in cfg["platform_toolsets"]["cli"]:
         cfg["platform_toolsets"]["cli"].append("delegation")
 
-    if args.discord_channel_id:
+    channel_registry = getattr(args, "channel_registry", [])
+    if channel_registry:
         free_response, prompts = coordinator_discord_config(args, custom_specs, lang)
         cfg.setdefault("discord", {})
         cfg["discord"]["require_mention"] = True
@@ -2630,17 +2794,22 @@ def refresh_default_coordinator(
         env_values["DISCORD_BOT_TOKEN"] = args.discord_bot_token
     if args.discord_user_id:
         env_values["DISCORD_ALLOWED_USERS"] = args.discord_user_id
-    if args.discord_channel_id:
-        env_values["DISCORD_HOME_CHANNEL"] = args.discord_channel_id
+    home_channel = next((record for record in channel_registry if record.get("free_response")), None)
+    if home_channel:
+        env_values["DISCORD_HOME_CHANNEL"] = str(home_channel["channel_id"])
         free_response, _prompts = coordinator_discord_config(args, custom_specs, lang)
         if PLACEHOLDER_CHANNEL not in free_response:
             env_values["DISCORD_FREE_RESPONSE_CHANNELS"] = free_response
-        env_values["DISCORD_HOME_CHANNEL_NAME"] = "#agent-proposals"
+        env_values["DISCORD_HOME_CHANNEL_NAME"] = str(home_channel.get("channel_name") or "#agent-proposals")
     upsert_env(args.hermes_home / ".env", env_values, {})
 
     setup = args.hermes_home / "DISCORD_AGENT_PROPOSALS_SETUP.md"
     setup.write_text(discord_setup_doc(lang), encoding="utf-8")
     routing_table_path(args.hermes_home).write_text(routing_table(custom_specs, lang), encoding="utf-8")
+    channel_registry_path(args.hermes_home).write_text(
+        json.dumps(channel_registry, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def mark_legacy_coordinator_profile(args: argparse.Namespace, lang: str) -> None:
@@ -3736,18 +3905,23 @@ def openclaw_channel_routes(
     custom_specs: list[dict[str, Any]],
     lang: str,
 ) -> dict[str, Any]:
-    channels: list[dict[str, str]] = [{
-        "channel_name": "#agent-proposals",
-        "channel_id": args.discord_channel_id or "",
-        "routes_to": "coordinator",
-        "prompt": textwrap.dedent(DISCORD_PROMPT[lang]).strip(),
-    }]
-    for spec in custom_specs:
+    channel_records = getattr(args, "channel_registry", None) or build_channel_registry(args, custom_specs)
+    custom_by_name = {spec["name"]: spec for spec in custom_specs}
+    channels: list[dict[str, str]] = []
+    for record in channel_records:
+        profile = str(record.get("profile") or "")
+        routes_to = "coordinator" if profile == "default" else profile
+        if record.get("free_response"):
+            prompt = textwrap.dedent(DISCORD_PROMPT[lang]).strip()
+        elif profile in custom_by_name:
+            prompt = textwrap.dedent(custom_channel_prompt(custom_by_name[profile], lang)).strip()
+        else:
+            prompt = textwrap.dedent(core_channel_prompt(profile, lang)).strip()
         channels.append({
-            "channel_name": spec["discord_channel_name"],
-            "channel_id": spec["discord_channel_id"],
-            "routes_to": spec["name"],
-            "prompt": textwrap.dedent(custom_channel_prompt(spec, lang)).strip(),
+            "channel_name": str(record.get("channel_name") or f"#{routes_to}"),
+            "channel_id": str(record.get("channel_id") or ""),
+            "routes_to": routes_to,
+            "prompt": prompt,
         })
     return {
         "policy": "Use one coordinator-owned Discord bot token; route distinct channels by channel prompt.",
@@ -3760,24 +3934,17 @@ def openclaw_channel_routes(
 
 def openclaw_route_bindings(custom_specs: list[dict[str, Any]], args: argparse.Namespace) -> list[dict[str, Any]]:
     bindings: list[dict[str, Any]] = []
-    if args.discord_channel_id:
-        bindings.append({
-            "type": "route",
-            "agentId": "coordinator",
-            "comment": "OPC proposal intake channel.",
-            "match": {
-                "channel": "discord",
-                "peer": {"kind": "channel", "id": args.discord_channel_id},
-            },
-        })
-    for spec in custom_specs:
-        channel_id = spec.get("discord_channel_id") or ""
+    channel_records = getattr(args, "channel_registry", None) or build_channel_registry(args, custom_specs)
+    for record in channel_records:
+        channel_id = str(record.get("channel_id") or "")
         if not channel_id:
             continue
+        profile = str(record.get("profile") or "")
+        agent_id = "coordinator" if profile == "default" else profile
         bindings.append({
             "type": "route",
-            "agentId": spec["name"],
-            "comment": f"OPC custom peer Agent channel for {spec['name']}.",
+            "agentId": agent_id,
+            "comment": f"OPC channel route for {agent_id}.",
             "match": {
                 "channel": "discord",
                 "peer": {"kind": "channel", "id": channel_id},
@@ -3802,8 +3969,9 @@ def openclaw_discord_config(
     args: argparse.Namespace,
     lang: str,
 ) -> dict[str, Any] | None:
-    channel_ids = [args.discord_channel_id] if args.discord_channel_id else []
-    channel_ids.extend(spec.get("discord_channel_id") or "" for spec in custom_specs)
+    channel_records = getattr(args, "channel_registry", None) or build_channel_registry(args, custom_specs)
+    custom_by_name = {spec["name"]: spec for spec in custom_specs}
+    channel_ids = [str(record.get("channel_id") or "") for record in channel_records]
     channel_ids = [channel_id for channel_id in channel_ids if channel_id]
     if not channel_ids:
         return None
@@ -3816,19 +3984,24 @@ def openclaw_discord_config(
         config["allowFrom"] = [args.discord_user_id]
     if args.discord_guild_id:
         channels: dict[str, Any] = {}
-        if args.discord_channel_id:
-            channels[args.discord_channel_id] = openclaw_discord_channel_config(
-                textwrap.dedent(DISCORD_PROMPT[lang]).strip(),
-                sorted(allowed_skills_for_agent("coordinator", target="openclaw")),
-                args,
-            )
-        for spec in custom_specs:
-            channel_id = spec.get("discord_channel_id") or ""
+        for record in channel_records:
+            channel_id = str(record.get("channel_id") or "")
             if not channel_id:
                 continue
+            profile = str(record.get("profile") or "")
+            target_profile = "coordinator" if profile == "default" else profile
+            if record.get("free_response"):
+                prompt = textwrap.dedent(DISCORD_PROMPT[lang]).strip()
+                skills = sorted(allowed_skills_for_agent("coordinator", target="openclaw"))
+            elif profile in custom_by_name:
+                prompt = textwrap.dedent(custom_channel_prompt(custom_by_name[profile], lang)).strip()
+                skills = sorted(allowed_skills_for_agent(profile, custom_by_name[profile], target="openclaw"))
+            else:
+                prompt = textwrap.dedent(core_channel_prompt(profile, lang)).strip()
+                skills = sorted(allowed_skills_for_agent(target_profile, target="openclaw"))
             channels[channel_id] = openclaw_discord_channel_config(
-                textwrap.dedent(custom_channel_prompt(spec, lang)).strip(),
-                sorted(allowed_skills_for_agent(spec["name"], spec, target="openclaw")),
+                prompt,
+                skills,
                 args,
             )
         config["guilds"] = {args.discord_guild_id: {"channels": channels}}
@@ -4263,6 +4436,10 @@ def audit_channel_prompts(
     discord = cfg.get("discord") if isinstance(cfg.get("discord"), dict) else {}
     prompts = discord.get("channel_prompts") if isinstance(discord.get("channel_prompts"), dict) else {}
     expected_channels: dict[str, str] = {}
+    for record in read_channel_registry_file(channel_registry_path(hermes_home)):
+        cid = record.get("channel_id") or ""
+        if cid:
+            expected_channels[cid] = str(record.get("profile") or "")
     for spec in custom_specs:
         cid = spec.get("discord_channel_id") or ""
         if cid:
@@ -4489,6 +4666,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--discord-guild-id", help="Discord guild/server ID used by the OpenClaw config patch")
     parser.add_argument("--discord-user-id")
     parser.add_argument("--discord-bot-token")
+    parser.add_argument(
+        "--agent-channel",
+        action="append",
+        help="Discord channel route in profile=channel_id form. Core/custom profile channels require mention and auto-thread; default/coordinator is the home free-response channel.",
+    )
+    parser.add_argument(
+        "--agent-channel-name",
+        action="append",
+        help="Optional channel display name in profile=#channel form, paired with --agent-channel.",
+    )
     parser.add_argument("--custom-profile-spec", action="append", help="JSON file containing one custom agent spec or a list of specs")
     parser.add_argument("--custom-profile-json", action="append", help="Inline JSON object for one custom peer agent")
     parser.add_argument("--custom-profile-preset", action="append", help="Built-in custom agent preset: growth-agent or secretary")
@@ -4521,16 +4708,20 @@ def main() -> int:
     args.gstack_root = (args.gstack_root or Path.home() / "gstack").expanduser()
     args.gbrain_root = (args.gbrain_root or Path.home() / "gbrain").expanduser()
     args.waza_root = args.waza_root.expanduser() if args.waza_root is not None else None
+    initial_channels = parse_mapping_items(args.agent_channel or [], "--agent-channel")
+    if not args.discord_channel_id and initial_channels.get("default"):
+        args.discord_channel_id = initial_channels["default"]
     args.wiki_path = resolve_wiki_path(args)
     args.dependencies = check_dependencies(args)
     CURRENT_DEPENDENCIES = args.dependencies
-    requested_custom_specs = load_custom_specs(args)
+    requested_custom_specs = apply_channel_overrides_to_custom_specs(load_custom_specs(args), args)
     lang = args.language
 
     if args.target == "hermes":
         validate_openai_codex_oauth(args)
         create_missing_profiles(args.hermes_home, args.dry_run, [])
         custom_specs = merge_custom_registry(args.hermes_home, requested_custom_specs, args.dry_run)
+        args.channel_registry = build_channel_registry(args, custom_specs)
         create_missing_profiles(args.hermes_home, args.dry_run, custom_specs)
         refresh_profiles(args, custom_specs, lang)
         init_wiki(args, custom_specs, lang)
@@ -4540,6 +4731,7 @@ def main() -> int:
         print(f"Hermes home: {args.hermes_home}")
     else:
         custom_specs = merge_openclaw_custom_registry(args.openclaw_home, requested_custom_specs, args.dry_run)
+        args.channel_registry = build_channel_registry(args, custom_specs)
         init_openclaw_package(args, custom_specs, lang)
         init_wiki(args, custom_specs, lang)
         print("OpenClaw OPC team package initialization complete.")

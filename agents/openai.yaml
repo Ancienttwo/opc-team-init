@@ -1,4 +1,4 @@
 interface:
   display_name: "OPC Team Init"
-  short_description: "Initialize Hermes/OpenClaw OPC teams with GStack/GBrain/Waza routing"
-  default_prompt: "Use $opc-team-init to initialize or refresh my OPC agent team."
+  short_description: "Install and configure Hermes/OpenClaw OPC teams with shared vault and channel routing"
+  default_prompt: "Use $opc-team-init to create a team spec, then install-configure my OPC agent team."
