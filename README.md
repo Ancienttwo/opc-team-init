@@ -108,7 +108,7 @@ Natural-language team setup should first be converted into a JSON team spec. See
 - `~/.hermes/profiles/<custom>/SOUL.md` and `memories/MEMORY.md`
 - `~/.hermes/OPC_ROUTING_TABLE.md`
 - `~/.hermes/DISCORD_AGENT_PROPOSALS_SETUP.md`
-- Default `discord.channel_prompts` strings injected into `~/.hermes/config.yaml`
+- Default `discord.channel_profiles` runtime routes and compatible `discord.channel_prompts` strings injected into `~/.hermes/config.yaml`
 - Wiki seed pages: `SCHEMA.md`, `index.md`, `log.md`, `concepts/*.md`, `entities/custom-profiles.md`, `projects/opc-agent-team-operating-model.md`
 - OpenClaw package `agents/*.md`, `agent-dirs/*/SOUL.md|MEMORY.md`, `routing-table.md`, `subagent-reporting.md`, `discord-channel-routing.json`
 
@@ -130,8 +130,8 @@ The audit reports:
 
 - Per-profile SOUL/MEMORY status: `clean`, `drift` (managed block edited), `legacy` (no managed block — pre-v0.4 file or pure manual content), or `missing`.
 - Lines of manual content sitting outside each managed block (preserved across reruns).
-- Discord `channel_prompts` coverage vs the registered custom profiles.
-- `OPC_CHANNELS.json` coverage vs `discord.channel_prompts`.
+- Discord `channel_profiles` and `channel_prompts` coverage vs the registered custom profiles.
+- `OPC_CHANNELS.json` coverage vs `discord.channel_profiles` and `discord.channel_prompts`.
 - Custom registry vs profile directory consistency.
 - Wiki path validity.
 - Multi-gateway LaunchAgents in `~/Library/LaunchAgents/com.hermes.gateway*.plist`.
@@ -204,9 +204,9 @@ Use `--dependency-mode strict` in CI-style checks.
 
 ## Discord
 
-Hermes does not allow two gateways to share a Discord bot token; a second `hermes gateway start` with the same token will fail. The default mode is therefore **single-gateway**: only the default coordinator gateway connects to Discord, and per-channel role behavior is driven by `discord.channel_prompts` in `~/.hermes/config.yaml`. Specialist and custom Profiles never start their own gateway by default.
+Hermes does not allow two gateways to share a Discord bot token; a second `hermes gateway start` with the same token will fail. The default mode is therefore **single-gateway**: only the default coordinator gateway connects to Discord, and per-channel runtime routing is driven by `discord.channel_profiles` in `~/.hermes/config.yaml`. `discord.channel_prompts` remains as compatible prompt/context injection. Specialist and custom Profiles never start their own gateway by default.
 
-Only the default/coordinator home channel is written to `discord.free_response_channels`; it can work as an always-open Orchestrator channel. Researcher, writer, builder, and custom agent channels are written to `discord.channel_prompts` only, so they still require an `@mention` and auto-create a thread.
+Only the default/coordinator home channel is written to `discord.free_response_channels`; it can work as an always-open Orchestrator channel. Researcher, writer, builder, and custom agent channels are written to `discord.channel_profiles` plus `discord.channel_prompts`, so they route to the right Profile runtime while still requiring an `@mention` and auto-create a thread.
 
 Hermes proposal channel:
 
@@ -250,7 +250,7 @@ Do not commit real bot tokens.
 
 Specialist and custom profile `SOUL.md` and `memories/MEMORY.md` are written inside `<!-- BEGIN OPC MANAGED: <profile> SOUL -->` ... `<!-- END OPC MANAGED: <profile> SOUL -->` blocks. Manual content outside those blocks is preserved across reruns; rerunning the script replaces the block in place. The default coordinator's SOUL/MEMORY use the legacy `OPC_TEAM_DEFAULT_COORDINATOR_*` markers.
 
-`config.yaml` writes are scoped to a fixed allowlist (`skills.disabled`, `skills.external_dirs`, `delegation`, `platform_toolsets.cli`, plus `discord.require_mention/auto_thread/reactions/free_response_channels/channel_prompts`). Other keys are not touched. The default `discord.channel_prompts` map is merged dict-wise so manual entries the user added are kept.
+`config.yaml` writes are scoped to a fixed allowlist (`skills.disabled`, `skills.external_dirs`, `delegation`, `platform_toolsets.cli`, plus `discord.require_mention/auto_thread/reactions/free_response_channels/channel_profiles/channel_prompts`). Other keys are not touched. The default `discord.channel_profiles` and `discord.channel_prompts` maps are merged dict-wise so manual entries the user added are kept.
 
 Before each refresh, the script snapshots SOUL/MEMORY/config/routing-table to `~/.hermes/.opc-backups/<timestamp>/` and prunes older snapshots beyond the most recent 10.
 
@@ -303,4 +303,4 @@ Skill validation:
 
 ## Version
 
-Current skill metadata version: `0.5.1`.
+Current skill metadata version: `0.5.2`.

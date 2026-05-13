@@ -92,7 +92,7 @@ The shell wrapper is only a bootstrapper. All profile/config writes still go thr
 
 - `default`, `coordinator`, `coordinator-primary`, and `orchestrator` all resolve to the Hermes default/coordinator-primary entrypoint.
 - The default/coordinator home channel is the only free-response channel. It is suitable for the Orchestrator to talk freely.
-- Researcher, writer, builder, and custom agent channels get `discord.channel_prompts` only. They keep `require_mention: true` and `auto_thread: true`, so new channel work needs a mention and opens a thread.
+- Researcher, writer, builder, and custom agent channels get `discord.channel_profiles` for runtime routing plus `discord.channel_prompts` for compatible prompt/context injection. They keep `require_mention: true` and `auto_thread: true`, so new channel work needs a mention and opens a thread.
 - The durable source of truth for generated channel routing is `OPC_CHANNELS.json`.
 
 ## Built-In Custom Examples

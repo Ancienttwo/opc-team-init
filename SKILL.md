@@ -3,7 +3,7 @@ name: opc-team-init
 description: Initialize, refresh, or audit an OPC agent team for Hermes or OpenClaw. Use to handle requests like "set up agent team", "refresh my profiles", "build an OPC team", "install and configure OPC", "fix Discord gateway", "audit my Hermes setup", or similar. Covers Hermes profiles (default coordinator + researcher/writer/builder + custom peers like growth-agent or secretary), shared Wiki memory at WIKI_PATH, one-token Discord channel routing, gateway drift, and English / Simplified Chinese / Traditional Chinese profile content. English is the source of truth for all multilingual content.
 license: MIT
 metadata:
-  version: 0.5.1
+  version: 0.5.2
 ---
 
 # OPC Team Init
@@ -23,7 +23,7 @@ Use this skill to bootstrap or refresh an OPC Agent Team for Hermes or OpenClaw:
 - Channel routing from a reusable team spec: the default/coordinator home channel is free-response; researcher, writer, builder, and custom Profile channels require mention and use auto-threading.
 - A Subagent delegation/reporting contract so temporary agents report back to exactly one owning agent instead of bloating context.
 - Three-language profile content: `--language en|zh-CN|zh-TW` (required for `--mode init`). English is the source of truth; the others are translations.
-- Read-only audit (`--mode audit`) reports drift, missing profiles, residual multi-gateway LaunchAgents, and Discord channel-prompt coverage. Generated channel source-of-truth lives in `OPC_CHANNELS.json`.
+- Read-only audit (`--mode audit`) reports drift, missing profiles, residual multi-gateway LaunchAgents, and Discord channel profile/prompt coverage. Generated channel source-of-truth lives in `OPC_CHANNELS.json`.
 - Specialist and custom Profile SOUL.md and MEMORY.md are written inside `<!-- BEGIN OPC MANAGED ... -->` ... `<!-- END OPC MANAGED ... -->` blocks; manual content outside the block is preserved across reruns. Pre-write snapshots land in `~/.hermes/.opc-backups/<timestamp>/` (last 10 retained).
 
 ## Quick Start
@@ -187,7 +187,7 @@ The audit reports:
 
 - Per-profile SOUL.md and MEMORY.md status: `clean` (matches template hash), `drift` (managed block exists but content was edited), `legacy` (no managed block — pre-v0.4 file or pure manual content), or `missing`.
 - Lines of manual content sitting outside each managed block (preserved by init).
-- Discord `channel_prompts` coverage: which custom-profile channel IDs are wired into default config and which are missing or extra.
+- Discord `channel_profiles` and `channel_prompts` coverage: which custom-profile channel IDs are wired into default config and which are missing or extra.
 - Custom registry vs profile directory consistency.
 - Wiki path validity (existence and presence of SCHEMA.md).
 - Multi-gateway LaunchAgents in `~/Library/LaunchAgents/com.hermes.gateway*.plist`. More than one means a Discord bot-token conflict is likely.
@@ -205,7 +205,7 @@ The audit reports:
 9. For Hermes, only the coordinator role rewrites/augments the user's default root `SOUL.md` and memory through a managed block. `researcher`/`writer`/`builder` and custom peer agents are refreshed in place inside their own per-profile managed blocks; `profiles/coordinator` is left as a legacy backup/template if it exists.
 10. For OpenClaw, read `references/openclaw.md`; generate an OpenClaw-compatible package under `~/.openclaw/opc-team` without mutating `.openclaw/openclaw.json`.
 11. If Discord credentials are incomplete, leave safe placeholders and do not start the gateway.
-12. **Default to single-gateway mode.** Hermes does not allow two gateways to share a Discord bot token. The default coordinator gateway also receives `discord.channel_prompts` for every specialist + custom Profile; researcher/writer/builder gateways are not started. Only pass `--multi-gateway` when each profile already has its own `DISCORD_BOT_TOKEN` in `profiles/<name>/.env`; the script will refuse otherwise.
+12. **Default to single-gateway mode.** Hermes does not allow two gateways to share a Discord bot token. The default coordinator gateway receives `discord.channel_profiles` for runtime routing and `discord.channel_prompts` for prompt/context injection for every specialist + custom Profile; researcher/writer/builder gateways are not started. Only pass `--multi-gateway` when each profile already has its own `DISCORD_BOT_TOKEN` in `profiles/<name>/.env`; the script will refuse otherwise.
 13. If the user provides real Discord values and asks to start Hermes gateway, run with `--start-gateway`.
 14. By default, the Hermes target seeds missing profile `auth.json` from the default Hermes home so OAuth-backed models work across Profiles. Use `--no-copy-auth` only when the user wants each Profile authenticated separately.
 15. Before relying on OpenAI Codex GPT-5.x role/model routing, verify `hermes auth list` or `hermes status` shows `openai-codex` OAuth logged in. If missing, do not configure or refresh profiles that use `provider: openai-codex`; have the user authenticate or choose another provider first.
@@ -226,7 +226,7 @@ Custom Agents are peer agents, not children of the core agents. In Hermes they a
 - Do not allow a custom Profile named `default`, `coordinator`, `researcher`, `writer`, or `builder`.
 - Let the LLM generate the custom agent from the user's description.
 - A custom agent may spawn temporary Subagents, but those Subagents report only to that custom agent.
-- Hermes Discord defaults to one bot token owned by default/coordinator-primary; custom agents are associated with distinct Discord channels through default channel prompts.
+- Hermes Discord defaults to one bot token owned by default/coordinator-primary; custom agents are associated with distinct Discord channels through default `channel_profiles` runtime routes and compatible channel prompts.
 - Custom Profile language follows the global `--language`; do not put a `language` field inside individual specs.
 - OpenClaw Discord defaults to one bot token owned by the generated coordinator agent.
 
@@ -236,7 +236,7 @@ Read `references/custom-profiles.md` before creating or changing custom agent sp
 
 `refresh_default_coordinator` and `refresh_profiles` write into specific marker pairs and never touch content outside them. Specialist + custom profile files use `<!-- BEGIN OPC MANAGED: <profile> SOUL -->` and the matching `END` marker; the default coordinator's SOUL/MEMORY use the legacy `OPC_TEAM_DEFAULT_COORDINATOR_*` markers.
 
-YAML config writes are scoped to a fixed allowlist of keys (`skills.disabled`, `skills.external_dirs`, `delegation`, `platform_toolsets.cli`, `discord.require_mention`, `discord.auto_thread`, `discord.reactions`, `discord.free_response_channels`, `discord.channel_prompts`). Other keys in `config.yaml` are preserved. The default config's `discord.channel_prompts` is merged dict-wise, so manual entries the user added are kept.
+YAML config writes are scoped to a fixed allowlist of keys (`skills.disabled`, `skills.external_dirs`, `delegation`, `platform_toolsets.cli`, `discord.require_mention`, `discord.auto_thread`, `discord.reactions`, `discord.free_response_channels`, `discord.channel_profiles`, `discord.channel_prompts`). Other keys in `config.yaml` are preserved. The default config's `discord.channel_profiles` and `discord.channel_prompts` are merged dict-wise, so manual entries the user added are kept.
 
 Before any write, the script snapshots SOUL/MEMORY/config and the routing table to `~/.hermes/.opc-backups/<timestamp>/`. The newest 10 snapshots are kept; older ones are pruned automatically.
 
@@ -265,8 +265,8 @@ Read `references/subagent-reporting.md` before changing the delegation prompt, r
 
 - Never write secrets into `SOUL.md`, `MEMORY.md`, Wiki files, or `config.yaml`.
 - Keep Hermes Discord bot token only in the default `.env`; do not copy it into researcher/writer/builder/custom Profile `.env` files. The exception is `--multi-gateway` mode, which requires a unique token per profile in each `profiles/<name>/.env`.
-- A single Hermes gateway holds the Discord bot token; starting a second gateway with the same token will fail. Default to single-gateway mode and use `discord.channel_prompts` to route per-channel role behavior.
-- Only the default/coordinator home channel should be listed in `discord.free_response_channels`. Specialist and custom channels should have `channel_prompts` but stay mention-required so Hermes can auto-create threads.
+- A single Hermes gateway holds the Discord bot token; starting a second gateway with the same token will fail. Default to single-gateway mode and use `discord.channel_profiles` for per-channel Profile runtime routing.
+- Only the default/coordinator home channel should be listed in `discord.free_response_channels`. Specialist and custom channels should have `channel_profiles` plus `channel_prompts`, but stay mention-required so Hermes can auto-create threads.
 - Keep project state in the shared Wiki, not in role memory.
 - Do not delete existing Profiles, sessions, memories, or skills during refresh.
 - Do not connect researcher/writer/builder to Discord unless the user explicitly asks for separate bots and channel policy.

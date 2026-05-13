@@ -86,6 +86,7 @@ OPC_MANAGED_KEYS = (
     "discord.reactions",
     "discord.free_response_channels",
     "discord.channel_prompts",
+    "discord.channel_profiles",
 )
 
 
@@ -2703,10 +2704,11 @@ def coordinator_discord_config(
     args: argparse.Namespace,
     custom_specs: list[dict[str, Any]],
     lang: str,
-) -> tuple[str, dict[str, str]]:
+) -> tuple[str, dict[str, str], dict[str, str]]:
     channel_records = getattr(args, "channel_registry", None) or build_channel_registry(args, custom_specs)
     base_channel = args.discord_channel_id or PLACEHOLDER_CHANNEL
     prompts: dict[str, str] = {}
+    channel_profiles: dict[str, str] = {}
     free_channels: list[str] = []
     custom_by_name = {spec["name"]: spec for spec in custom_specs}
     for record in channel_records:
@@ -2714,6 +2716,7 @@ def coordinator_discord_config(
         if not channel_id:
             continue
         profile = str(record.get("profile") or "")
+        channel_profiles[channel_id] = "default" if profile == "default" else profile
         if record.get("free_response"):
             free_channels.append(channel_id)
             prompts[channel_id] = textwrap.dedent(DISCORD_PROMPT[lang]).strip()
@@ -2723,11 +2726,13 @@ def coordinator_discord_config(
             prompts[channel_id] = textwrap.dedent(core_channel_prompt(profile, lang)).strip()
     if args.discord_channel_id and args.discord_channel_id not in prompts:
         prompts[args.discord_channel_id] = textwrap.dedent(DISCORD_PROMPT[lang]).strip()
+        channel_profiles[args.discord_channel_id] = "default"
         free_channels.append(args.discord_channel_id)
     if not prompts:
         prompts[base_channel] = textwrap.dedent(DISCORD_PROMPT[lang]).strip()
+        channel_profiles[base_channel] = "default"
     free_response = ",".join(dict.fromkeys(free_channels)) if free_channels else base_channel
-    return free_response, prompts
+    return free_response, prompts, channel_profiles
 
 
 def refresh_default_coordinator(
@@ -2774,7 +2779,7 @@ def refresh_default_coordinator(
 
     channel_registry = getattr(args, "channel_registry", [])
     if channel_registry:
-        free_response, prompts = coordinator_discord_config(args, custom_specs, lang)
+        free_response, prompts, channel_profiles = coordinator_discord_config(args, custom_specs, lang)
         cfg.setdefault("discord", {})
         cfg["discord"]["require_mention"] = True
         cfg["discord"]["auto_thread"] = True
@@ -2787,6 +2792,13 @@ def refresh_default_coordinator(
         merged_prompts = dict(existing_prompts)
         merged_prompts.update(prompts)
         cfg["discord"]["channel_prompts"] = merged_prompts
+        # Preserve any non-OPC channel profile routes the user added manually.
+        existing_profiles = cfg["discord"].get("channel_profiles") or {}
+        if not isinstance(existing_profiles, dict):
+            existing_profiles = {}
+        merged_profiles = dict(existing_profiles)
+        merged_profiles.update(channel_profiles)
+        cfg["discord"]["channel_profiles"] = merged_profiles
     dump_yaml(cfg_path, cfg)
 
     env_values = {"WIKI_PATH": str(args.wiki_path)}
@@ -2797,7 +2809,7 @@ def refresh_default_coordinator(
     home_channel = next((record for record in channel_registry if record.get("free_response")), None)
     if home_channel:
         env_values["DISCORD_HOME_CHANNEL"] = str(home_channel["channel_id"])
-        free_response, _prompts = coordinator_discord_config(args, custom_specs, lang)
+        free_response, _prompts, _profiles = coordinator_discord_config(args, custom_specs, lang)
         if PLACEHOLDER_CHANNEL not in free_response:
             env_values["DISCORD_FREE_RESPONSE_CHANNELS"] = free_response
         env_values["DISCORD_HOME_CHANNEL_NAME"] = str(home_channel.get("channel_name") or "#agent-proposals")
@@ -2861,9 +2873,10 @@ def _write_specialist_profile_config(
     cfg["discord"]["auto_thread"] = True
     cfg["discord"]["reactions"] = True
     cfg["discord"]["free_response_channels"] = ""
-    # Specialist profiles run with empty channel_prompts because under the
+    # Specialist profiles run with empty Discord channel maps because under the
     # default single-gateway policy they never own Discord channels directly.
     cfg["discord"]["channel_prompts"] = {}
+    cfg["discord"]["channel_profiles"] = {}
     dump_yaml(cfg_path, cfg)
 
 
@@ -2967,7 +2980,7 @@ DISCORD_FREE_RESPONSE_CHANNELS=<agent-proposals-channel-id>
 DISCORD_HOME_CHANNEL_NAME=#agent-proposals
 ```
 
-When using the Hermes target, run the initializer with `--discord-channel-id` so the default `config.yaml` receives the channel prompt. Placeholder channel IDs are not written into default config.
+When using the Hermes target, run the initializer with `--discord-channel-id` so the default `config.yaml` receives the home channel route and prompt. Placeholder channel IDs are not written into default config.
 
 After filling real values:
 
@@ -2979,7 +2992,7 @@ hermes gateway status
 
 In Discord, run `/sethome` inside `#agent-proposals` once the bot is present.
 
-Policy: only default/coordinator-primary connects to Discord. Researcher, writer, builder, and custom Profiles share the same bot token through default `discord.channel_prompts` routing. A second simultaneous gateway with the same bot token will fail; use `--multi-gateway` (with one bot token per profile) only as an advanced setup.
+Policy: only default/coordinator-primary connects to Discord. Researcher, writer, builder, and custom Profiles share the same bot token through default `discord.channel_profiles` runtime routing; `discord.channel_prompts` remains compatible prompt/context injection. A second simultaneous gateway with the same bot token will fail; use `--multi-gateway` (with one bot token per profile) only as an advanced setup.
 """,
     "zh-CN": """\
 # Discord #agent-proposals 设置
@@ -2996,7 +3009,7 @@ DISCORD_FREE_RESPONSE_CHANNELS=<agent-proposals-channel-id>
 DISCORD_HOME_CHANNEL_NAME=#agent-proposals
 ```
 
-Hermes target 下，使用 `--discord-channel-id` 让 default `config.yaml` 收到 channel prompt。占位符 channel ID 不会被写入 default config。
+Hermes target 下，使用 `--discord-channel-id` 让 default `config.yaml` 收到 home channel route 和 prompt。占位符 channel ID 不会被写入 default config。
 
 填好真实值之后：
 
@@ -3008,7 +3021,7 @@ hermes gateway status
 
 第一次让 bot 进入 `#agent-proposals` 后，在该频道执行 `/sethome`。
 
-策略：只有 default/coordinator-primary 直接连 Discord。Researcher、writer、builder 和 custom Profile 共用同一个 bot token，通过 default 的 `discord.channel_prompts` 做路由。再启动一个使用相同 bot token 的 gateway 会失败；只有在为每个 profile 准备了独立 bot token 时才使用 `--multi-gateway` 高级模式。
+策略：只有 default/coordinator-primary 直接连 Discord。Researcher、writer、builder 和 custom Profile 共用同一个 bot token，通过 default 的 `discord.channel_profiles` 做 runtime 路由；`discord.channel_prompts` 保留为兼容提示/上下文注入。再启动一个使用相同 bot token 的 gateway 会失败；只有在为每个 profile 准备了独立 bot token 时才使用 `--multi-gateway` 高级模式。
 """,
     "zh-TW": """\
 # Discord #agent-proposals 設定
@@ -3025,7 +3038,7 @@ DISCORD_FREE_RESPONSE_CHANNELS=<agent-proposals-channel-id>
 DISCORD_HOME_CHANNEL_NAME=#agent-proposals
 ```
 
-Hermes target 下，使用 `--discord-channel-id` 讓 default `config.yaml` 收到 channel prompt。占位符 channel ID 不會寫入 default config。
+Hermes target 下，使用 `--discord-channel-id` 讓 default `config.yaml` 收到 home channel route 與 prompt。占位符 channel ID 不會寫入 default config。
 
 填好真實值之後：
 
@@ -3037,7 +3050,7 @@ hermes gateway status
 
 第一次讓 bot 進入 `#agent-proposals` 後，在該頻道執行 `/sethome`。
 
-策略：只有 default/coordinator-primary 直接連 Discord。Researcher、writer、builder 與 custom Profile 共用同一個 bot token，透過 default 的 `discord.channel_prompts` 進行路由。再啟動一個使用相同 bot token 的 gateway 會失敗；只有在為每個 profile 準備獨立 bot token 時才使用 `--multi-gateway` 高級模式。
+策略：只有 default/coordinator-primary 直接連 Discord。Researcher、writer、builder 與 custom Profile 共用同一個 bot token，透過 default 的 `discord.channel_profiles` 進行 runtime 路由；`discord.channel_prompts` 保留為相容提示/上下文注入。再啟動一個使用相同 bot token 的 gateway 會失敗；只有在為每個 profile 準備獨立 bot token 時才使用 `--multi-gateway` 高級模式。
 """,
 }
 
@@ -3924,7 +3937,7 @@ def openclaw_channel_routes(
             "prompt": prompt,
         })
     return {
-        "policy": "Use one coordinator-owned Discord bot token; route distinct channels by channel prompt.",
+        "policy": "Use one coordinator-owned Discord bot token; route distinct channels by runtime profile route plus prompt context.",
         "token_owner": "coordinator",
         "token_env_var": "DISCORD_BOT_TOKEN",
         "allowed_users_env_var": "DISCORD_ALLOWED_USERS",
@@ -4425,21 +4438,16 @@ def _read_env_value(env_path: Path, key: str) -> str | None:
     return None
 
 
-def audit_channel_prompts(
+def expected_discord_channel_profiles(
     hermes_home: Path,
     custom_specs: list[dict[str, Any]],
-) -> dict[str, Any]:
-    cfg_path = hermes_home / "config.yaml"
-    if not cfg_path.exists():
-        return {"status": "no_config"}
-    cfg = load_yaml(cfg_path)
-    discord = cfg.get("discord") if isinstance(cfg.get("discord"), dict) else {}
-    prompts = discord.get("channel_prompts") if isinstance(discord.get("channel_prompts"), dict) else {}
+) -> dict[str, str]:
     expected_channels: dict[str, str] = {}
     for record in read_channel_registry_file(channel_registry_path(hermes_home)):
         cid = record.get("channel_id") or ""
         if cid:
-            expected_channels[cid] = str(record.get("profile") or "")
+            profile = str(record.get("profile") or "")
+            expected_channels[cid] = "default" if profile == "default" else profile
     for spec in custom_specs:
         cid = spec.get("discord_channel_id") or ""
         if cid:
@@ -4447,16 +4455,68 @@ def audit_channel_prompts(
     # The default proposal channel is also expected when wired into .env.
     home_channel = _read_env_value(hermes_home / ".env", "DISCORD_HOME_CHANNEL")
     if home_channel:
-        expected_channels[home_channel] = "#agent-proposals"
-    configured = set(prompts.keys())
+        expected_channels[home_channel] = "default"
+    return expected_channels
+
+
+def audit_channel_map(
+    hermes_home: Path,
+    custom_specs: list[dict[str, Any]],
+    *,
+    key: str,
+    validate_values: bool,
+) -> dict[str, Any]:
+    cfg_path = hermes_home / "config.yaml"
+    if not cfg_path.exists():
+        return {"status": "no_config"}
+    cfg = load_yaml(cfg_path)
+    discord = cfg.get("discord") if isinstance(cfg.get("discord"), dict) else {}
+    configured_map = discord.get(key) if isinstance(discord.get(key), dict) else {}
+    expected_channels = expected_discord_channel_profiles(hermes_home, custom_specs)
+    configured = {str(k): str(v) for k, v in configured_map.items()}
+    configured_ids = set(configured)
     expected = set(expected_channels.keys())
-    return {
+    result = {
         "status": "ok",
-        "configured_channel_ids": sorted(configured),
+        "configured_channel_ids": sorted(configured.keys()),
         "expected_channel_ids": sorted(expected),
-        "missing": sorted(expected - configured),
-        "extra": sorted(configured - expected),
+        "missing": sorted(expected - configured_ids),
+        "extra": sorted(configured_ids - expected),
     }
+    if validate_values:
+        result["mismatched"] = {
+            channel_id: {
+                "expected": expected_channels[channel_id],
+                "actual": configured[channel_id],
+            }
+            for channel_id in sorted(expected & configured_ids)
+            if configured[channel_id] != expected_channels[channel_id]
+        }
+    return result
+
+
+def audit_channel_prompts(
+    hermes_home: Path,
+    custom_specs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return audit_channel_map(
+        hermes_home,
+        custom_specs,
+        key="channel_prompts",
+        validate_values=False,
+    )
+
+
+def audit_channel_profiles(
+    hermes_home: Path,
+    custom_specs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return audit_channel_map(
+        hermes_home,
+        custom_specs,
+        key="channel_profiles",
+        validate_values=True,
+    )
 
 
 def audit_custom_registry(
@@ -4538,7 +4598,8 @@ def run_audit(args: argparse.Namespace) -> int:
         )
 
     launchagents = audit_launchagents()
-    channels = audit_channel_prompts(hermes_home, custom_specs)
+    channel_profiles = audit_channel_profiles(hermes_home, custom_specs)
+    channel_prompts = audit_channel_prompts(hermes_home, custom_specs)
     registry = audit_custom_registry(hermes_home, custom_specs)
     wiki = audit_wiki_path(hermes_home)
 
@@ -4547,7 +4608,8 @@ def run_audit(args: argparse.Namespace) -> int:
         "detected_language": detected_lang,
         "profiles": profile_records,
         "launch_agents": launchagents,
-        "channel_prompts": channels,
+        "channel_profiles": channel_profiles,
+        "channel_prompts": channel_prompts,
         "custom_registry": registry,
         "wiki": wiki,
     }
@@ -4568,7 +4630,9 @@ def run_audit(args: argparse.Namespace) -> int:
                 continue
             if rec[key].get("status") in ("missing", "drift"):
                 drift_or_missing = True
-    if channels.get("missing"):
+    if channel_profiles.get("missing") or channel_profiles.get("mismatched"):
+        drift_or_missing = True
+    if channel_prompts.get("missing"):
         drift_or_missing = True
     if registry.get("registered_but_missing_dir") or registry.get("dir_but_not_registered"):
         drift_or_missing = True
@@ -4599,6 +4663,16 @@ def _print_audit_human(report: dict[str, Any]) -> None:
         print(f"- {f}")
     if la.get("warning"):
         print(f"- WARNING: {la['warning']}")
+    print()
+    cp = report["channel_profiles"]
+    print("## Discord channel_profiles")
+    print(f"- status: {cp.get('status')}")
+    if cp.get("missing"):
+        print(f"- missing channel IDs (configured in custom registry but no profile route): {cp['missing']}")
+    if cp.get("mismatched"):
+        print(f"- mismatched channel profile routes: {cp['mismatched']}")
+    if cp.get("extra"):
+        print(f"- extra channel IDs (manual; preserved by init): {cp['extra']}")
     print()
     ch = report["channel_prompts"]
     print("## Discord channel_prompts")
